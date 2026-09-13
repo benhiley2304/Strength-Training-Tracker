@@ -1,27 +1,15 @@
 {
-  "name": "Cycle — Strength Training",
-  "short_name": "Cycle",
-  "description": "A rolling 12-session upper/lower strength programme with set logging and estimated 1RM tracking.",
+  "name": "Strength Training Tracker",
+  "short_name": "Strength Tracker",
+  "description": "A private, local-first 12-session strength training tracker.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
   "orientation": "portrait-primary",
-  "background_color": "#fafaf8",
-  "theme_color": "#fafaf8",
-  "categories": ["health", "fitness", "productivity"],
-  "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "icon-maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},
+    {"src":"icon-maskable.svg","sizes":"any","type":"image/svg+xml","purpose":"maskable"}
   ]
 }
