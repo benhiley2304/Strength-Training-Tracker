@@ -79,8 +79,8 @@ export class CloudStore {
     catch { throw new ReconcileError('Device recovery could not be saved. Export before combining tabs.'); }
     if ((this.replacement || other.replacement) && !sameState(this.state, other.state)) throw new ReconcileError('An import is pending in another tab. Review before replacing it.');
     const merged = other.revision < this.revision
-      ? (other.dirty ? reconcile(other.baseState || null, other.state, this.state) : clone(this.state))
-      : reconcile(this.baseState, this.state, other.state);
+      ? (other.dirty ? reconcile(other.baseState || null, other.state, this.state, {legacyBaseUpdatedAt: other.updatedAt}) : clone(this.state))
+      : reconcile(this.baseState, this.state, other.state, {sameRevision: other.revision === this.revision, legacyBaseUpdatedAt: this.updatedAt});
     if (other.revision >= this.revision) {
       this.revision = other.revision; this.updatedAt = other.updatedAt;
       this.baseState = clone(other.baseState || (!other.dirty ? other.state : this.baseState));
@@ -147,7 +147,7 @@ export class CloudStore {
     const remote = accountState(documentState(document), this.account.id);
     if (document.revision < this.revision) return false; // Stale response cannot roll back acknowledged state.
     if (this.dirty) this.journal('remote-reconcile', this.snapshot(), document);
-    const merged = this.dirty ? reconcile(this.baseState, this.state, remote, {replacement: this.replacement, sameRevision: document.revision === this.revision}) : remote;
+    const merged = this.dirty ? reconcile(this.baseState, this.state, remote, {replacement: this.replacement, sameRevision: document.revision === this.revision, legacyBaseUpdatedAt: this.updatedAt}) : remote;
     this.state = merged; this.baseState = clone(remote); this.revision = document.revision; this.updatedAt = document.updatedAt;
     this.dirty = !sameState(merged, remote); if (!this.dirty) this.replacement = false;
     this.failed = false; return true;

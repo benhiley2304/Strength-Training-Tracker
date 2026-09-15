@@ -429,7 +429,7 @@ document.addEventListener("change", async event => {
     }
     input.setCustomValidity("");
     if (input.id === "profile-bw") p.bw = input.value === "" ? null : +input.value;
-    else draft().bwSnapshot = input.value === "" ? null : +input.value;
+    else { const d = draft(), value = input.value === "" ? null : +input.value; if (d.bwSnapshot !== value) { d.bwSnapshot = value; d.bwSnapshotEdited = true; } }
     persist();
   }
   if (input.id === "rest-default") { p.restSeconds = +input.value; persist(); }

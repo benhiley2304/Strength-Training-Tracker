@@ -1,5 +1,5 @@
 RECONNECT SYNC — MANUAL RELEASE ACCEPTANCE
-Implementation based on 52ef9d7; release asset version: strength-training-tracker-v6-sync-4.
+Implementation based on 52ef9d7; release asset version: strength-training-tracker-v6-sync-5.
 
 Safety / scope
 - Use only synthetic accounts and isolated NODE_ENV=test storage. Never use production records, tracker-secrets, user exports, live data-repository writes or force pushes.
@@ -10,7 +10,7 @@ Architecture / expected behavior
 - Account-keyed V1 cache remains backward-readable; now stores acknowledged baseState and replacement marker. baseState is never inferred from dirty local content. Detached UI copies make real edits/no-op detection reliable.
 - Generic field deltas use the acknowledged baseline, not timestamps. History is indexed by stable workout IDs. Same-ID draft fields/sets merge; independent added set rows are kept; ambiguous concurrent positional deletions need review.
 - Completed draft IDs and reset cycles are not resurrected. A different-ID post-finish effort must have meaningful activity and a start after the known finish. Two simultaneous meaningful drafts occupying one session cannot both fit the schema, so both are archived and deliberate review is required.
-- Missing-baseline V1 migration favors pending local settings but retains both histories and remote nonempty drafts/values instead of overwriting them with untouched empty local defaults. This is intentionally best-effort: V1 cannot identify every changed field. No document-wide wall-clock winner.
+- Missing-baseline V1 migration favors pending local settings but retains both histories and remote nonempty drafts/values instead of overwriting them with untouched empty local defaults. This is intentionally best-effort: V1 cannot identify every changed field. Unmatched older history or meaningful drafts are held for review if the server revision advanced; only same-revision replay or records started/finished after the cached server acknowledgement timestamp can safely be treated as new additions. No document-wide wall-clock winner.
 - Every reconciliation archives both FULL account snapshots in a rolling five-entry :recovery journal before changes. Recovery storage/quota problems block reconciliation, not silently overwrite. Regular online saves can still succeed when device storage is inaccessible, while warning there is no device backup.
 - Import replacement is explicit, marked, rollback-backed and not unioned. A newer remote change triggers renewed review. Remote removal of baseline history while local edits are pending is treated as a destructive replacement.
 - At most 3 PUT attempts per flush for 409 races (250/500ms delay); no automatic endless race loop. At most 4 extra transient retries (1.5/3/6/12s) per reconnect/edit burst. Initial session/config reads get at most 3 attempts with exponential waits. Each network request is bounded at 90 seconds. Hidden/offline pauses subsequent requests; an already-started request can finish safely.
@@ -39,3 +39,5 @@ Limits / release notes
 - Journals/rollbacks are local, rolling, unencrypted recovery, not an external backup. Large histories may exceed browser quota, which intentionally requires export/review. Logout removes this account's journal along with cache/rollback, not any other account.
 - Newer code can safely journal a locked tab for update; unsupported locked data still needs deliberate recovery after the update. The fix does not reinterpret ambiguous destructive operations as routine merges.
 - Automated tests are synthetic. Real mobile/PWA update and production acceptance remain the main agent's responsibility before release.
+
+Reviewer regression additions: inherited blank BW80 draft + profile default81 cannot conflict with a different-ID remote effort; explicit workout BW edits use bwSnapshotEdited or same-ID baseline. Missing-base older histories/drafts absent after online import/reset must be journaled and held, never silently resurrected. Fresh post-ack additions and the zero-history screenshot still auto-reconcile.

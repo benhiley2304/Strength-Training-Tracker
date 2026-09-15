@@ -69,7 +69,7 @@ test('legacy cache cannot resurrect a different-ID stale session after remote fi
   r.profiles[0].history.push(history('finished')); r.profiles[0].current = 2;
   assert.equal(reconcile(null, l, r).profiles[0].drafts[1], undefined);
   l.profiles[0].drafts[1].startedAt = Date.parse('2026-09-15T19:00:00Z');
-  assert.equal(reconcile(null, l, r).profiles[0].drafts[1].notes, 'Old effort');
+  assert.equal(reconcile(null, l, r, {legacyBaseUpdatedAt: '2026-09-15T18:30:00Z'}).profiles[0].drafts[1].notes, 'Old effort');
 });
 test('V1 screenshot-shaped cache rev5 edited21:16 versus rev6 saved18:15 reconciles without a modal and archives both full versions', async t => {
   const storage = mem(), l = state(), r = remote(6); l.profiles[0].bw = 86; l.profiles[0].restSeconds = 120;
@@ -83,7 +83,7 @@ test('V1 screenshot-shaped cache rev5 edited21:16 versus rev6 saved18:15 reconci
 });
 test('legacy history unions preserve both devices and empty bodyweight does not erase a remote value', () => {
   const l = state(), r = state(); l.profiles[0].history.push(history('local')); r.profiles[0].history.push(history('remote', 2)); r.profiles[0].bw = 92;
-  const p = reconcile(null, l, r).profiles[0]; assert.equal(p.history.length, 2); assert.equal(p.bw, 92);
+  const p = reconcile(null, l, r, {legacyBaseUpdatedAt: '2026-09-15T17:00:00Z'}).profiles[0]; assert.equal(p.history.length, 2); assert.equal(p.bw, 92);
 });
 test('different unfinished efforts in the same slot prompt rather than destroying either', () => {
   const l = state(), r = state(); l.profiles[0].drafts[1] = newDraft(l.profiles[0]); r.profiles[0].drafts[1] = newDraft(r.profiles[0]);
@@ -228,7 +228,7 @@ test('workout-only bodyweight edits and deliberately added blank sets are meanin
   const f = setup(t), r = remote(); r.profile.bw = 80; await f.store.adopt(r);
   const l = clone(f.store.state); l.profiles[0].drafts[1] = newDraft(l.profiles[0]);
   f.store.save(l); assert.equal(f.store.dirty, false);
-  l.profiles[0].drafts[1].bwSnapshot = null; f.store.save(l); assert.equal(f.store.dirty, true);
+  l.profiles[0].drafts[1].bwSnapshot = null; l.profiles[0].drafts[1].bwSnapshotEdited = true; f.store.save(l); assert.equal(f.store.dirty, true);
   const blank = state(); blank.profiles[0].drafts[1] = newDraft(blank.profiles[0]); blank.profiles[0].drafts[1].exercises[0].sets.push(blankSet()); assert.equal(sameState(state(), blank), false);
 });
 
@@ -241,4 +241,41 @@ test('corrupt shared-tab state and failed reconciliation journals cannot lead to
     const l = state(); l.profiles[0].restSeconds = 180; f.store.save(l); await f.store.flush();
     assert.equal(f.store.locked, true); assert.equal(f.calls.length, 0); assert.equal(JSON.parse(f.storage.getItem(cacheKey(id))).state.profiles[0].bw, corrupt ? -1 : 90);
   }
+});
+
+test('changing profile default BW does not turn an inherited blank draft into a conflicting workout', async t => {
+  const b = state(); b.profiles[0].bw = 80; const l = clone(b), r = clone(b);
+  l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].bw = 81; // Rendered before the default changed; still BW80, never touched.
+  r.profiles[0].drafts[1] = newDraft(r.profiles[0]); r.profiles[0].drafts[1].notes = 'Genuine remote effort';
+  const merged = reconcile(b, l, r); assert.equal(merged.profiles[0].bw, 81); assert.equal(merged.profiles[0].drafts[1].id, r.profiles[0].drafts[1].id);
+  const noDraftRemote = clone(b); assert.deepEqual(reconcile(b, l, noDraftRemote).profiles[0].drafts, {});
+  const storage = mem(); pending(storage, l, {base: b}); const f = setup(t, {storage}); const document = remote(6); document.profile = r.profiles[0];
+  await f.store.adopt(document); assert.equal(f.store.locked, false); assert.equal(f.conflicts.length, 0); await f.store.flush(); assert.equal(f.store.dirty, false);
+});
+test('explicit workout BW marker is retained, and older same-ID snapshot edits use the known baseline', () => {
+  const b = state(); b.profiles[0].bw = 80; b.profiles[0].drafts[1] = newDraft(b.profiles[0]);
+  const l = clone(b), r = clone(b); l.profiles[0].drafts[1].bwSnapshot = 82; r.profiles[0].drafts[1].notes = 'Remote note';
+  assert.equal(sameState(b, l), false); const merged = reconcile(b, l, r); assert.equal(merged.profiles[0].drafts[1].bwSnapshot, 82); assert.equal(merged.profiles[0].drafts[1].notes, 'Remote note');
+  const explicit = state(); explicit.profiles[0].drafts[1] = newDraft(explicit.profiles[0]); explicit.profiles[0].drafts[1].bwSnapshot = 82; explicit.profiles[0].drafts[1].bwSnapshotEdited = true;
+  assert.equal(reconcile(state(), explicit, state()).profiles[0].drafts[1].bwSnapshot, 82);
+});
+test('legacy pre-ack history missing after newer online replacement is archived and held, not resurrected', async t => {
+  const storage = mem(), l = state(); l.profiles[0].history.push(history('possibly-removed')); l.profiles[0].bw = 81;
+  pending(storage, l, {base: null}); const raw = JSON.parse(storage.getItem(cacheKey(id))); raw.updatedAt = '2026-09-15T18:15:00Z'; storage.setItem(cacheKey(id), JSON.stringify(raw));
+  const f = setup(t, {storage}), r = remote(6); await f.store.adopt(r); await f.store.flush();
+  assert.equal(f.store.locked, true); assert.equal(f.calls.length, 0); assert.equal(f.store.state.profiles[0].history[0].id, 'possibly-removed');
+  const journal = JSON.parse(storage.getItem(recoveryKey(id))); assert.deepEqual(journal[0].snapshots[0].state, l); assert.deepEqual(journal[0].snapshots[1], r);
+});
+test('legacy missing meaningful old draft after online replacement requires review, but untouched blank does not', async t => {
+  const l = state(), r = state(); l.profiles[0].bw = 81; l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].drafts[1].notes = 'Older effort'; l.profiles[0].drafts[1].startedAt = Date.parse('2026-09-15T17:00:00Z');
+  assert.throws(() => reconcile(null, l, r, {legacyBaseUpdatedAt: '2026-09-15T18:15:00Z'}), /older unfinished/);
+  const storage = mem(); pending(storage, l, {base: null}); const f = setup(t, {storage}); await f.store.adopt(remote(6)); await f.store.flush(); assert.equal(f.store.locked, true); assert.equal(f.calls.length, 0);
+  l.profiles[0].drafts[1].notes = ''; l.profiles[0].drafts[1].startedAt = null;
+  assert.equal(reconcile(null, l, r).profiles[0].bw, 81); assert.deepEqual(reconcile(null, l, r).profiles[0].drafts, {});
+});
+test('legacy same-revision replay and demonstrably post-ack history/draft additions still reconcile automatically', async t => {
+  const l = state(), r = state(); l.profiles[0].history.push(history('new-offline-record', 2)); l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].drafts[1].startedAt = Date.parse('2026-09-15T18:01:00Z');
+  const fresh = reconcile(null, l, r, {legacyBaseUpdatedAt: '2026-09-15T17:59:00Z'}); assert.equal(fresh.profiles[0].history.length, 1); assert.ok(fresh.profiles[0].drafts[1]);
+  const same = reconcile(null, l, r, {sameRevision: true}); assert.equal(same.profiles[0].history.length, 1); assert.ok(same.profiles[0].drafts[1]);
+  assert.throws(() => reconcile(null, l, r), /Older device history/);
 });
