@@ -417,3 +417,33 @@ dialog::backdrop { background: #0b111c80; }
 @media(prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* Account controls use the same restrained type, surfaces and SVG vocabulary. */
+.auth-panel { max-width: 560px; padding: 28px; }
+.auth-panel .eyebrow { margin-bottom: 14px; }
+.cloud-form { display: grid; gap: 16px; margin: 20px 0; }
+.cloud-form .form-label { margin: 0; }
+.cloud-form > .button { justify-self: start; }
+.cloud-form input { width: 100%; }
+.auth-links, #sync-actions, .conflict-compare { display: flex; flex-wrap: wrap; gap: 16px; }
+.auth-links { padding-top: 18px; border-top: 1px solid var(--border); }
+.local-migration-note { margin-top: 24px; }
+.local-migration-note summary, #profile-dialog summary { cursor: pointer; font-weight: 600; }
+.cloud-launch { margin-top: 12px; }
+.recovery-code { display: block; font-size: 17px; line-height: 1.8; padding: 18px; overflow-wrap: anywhere; background: var(--surface-alt, var(--bg)); border: 1px solid var(--border); border-radius: 8px; user-select: all; }
+.conflict-compare { margin: 20px 0; }
+.conflict-compare > section { flex: 1 1 200px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+.conflict-compare h3 { font-size: 14px; margin: 0 0 10px; }
+.conflict-compare p { margin: 8px 0; }
+.app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#save-status { overflow-wrap: anywhere; }
+#sync-actions { flex-shrink: 0; }
+@media (max-width: 600px) { .auth-panel { padding: 20px; } .auth-links { gap: 12px; } .app-footer { align-items: flex-start; } }
+
+/* Cloud only: sync acknowledgement stays visible while training, without a second status widget. */
+.cloud-mode > .app-footer { position: sticky; top: 0; z-index: 20; max-width: none; margin: 0; padding: 6px 40px; min-height: 44px; flex-direction: row; align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); }
+.cloud-mode > .app-footer .text-button { min-height: 32px; font-size: .75rem; }
+@media (max-width: 700px) {
+  .cloud-mode > .app-footer { padding: 6px 16px; font-size: .75rem; gap: 12px; }
+  .cloud-mode #main { padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+}

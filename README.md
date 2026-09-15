@@ -1,8 +1,91 @@
 # Strength Training Tracker
 
+A twelve-session training log with two deliberately separate modes. The existing static URL remains a fully working **local-only tracker** and migration source. A separate Node service enables **private, invite-only cloud accounts**, with progress stored in a private GitHub data repository. No Supabase, third-party auth SDK, external scripts or runtime npm dependencies.
+
+## Cloud deployment — separate Render Node service
+
+Do **not** convert or remove the existing static Render service. Deploy this same source repository as a **new Web Service**, Node runtime, **Free** instance. Use Node **20 or 22**, build command `npm install --omit=dev`, start command `npm start` (equivalent to `node server.js`). Render supplies `PORT`; the server binds `0.0.0.0`. `render.yaml` intentionally continues to describe only the existing static service, so following it cannot replace that service with Node. Place only the new tracker service in the tracker project/environment; if the connector cannot specify project placement, do that manually in the Render dashboard. Do not change any unrelated project.
+
+The separate **private** data repository must already have an initialized `main` branch (a README is sufficient). Give a dedicated SSH **write deploy key** access to this data repository only. Never use a broad personal GitHub token in the app. The app source repository and static deployment must never contain private keys, account files, invite codes or session secrets.
+
+### Environment contract
+
+Set secrets directly in the new Render service's protected environment, not in code or `cloud-config.js`:
+
+| Variable | Required value / meaning |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `APP_ORIGIN` | Exact HTTPS cloud service origin, e.g. `https://YOUR-CLOUD-SERVICE.onrender.com`; **no trailing slash**. Unsafe requests from other or missing Origins are rejected. |
+| `SESSION_SECRET` | Cryptographically random secret, at least 32 bytes; 32 random bytes encoded as 64 hex characters is recommended. Keep stable across redeploys. Rotating it signs everyone out. |
+| `INVITE_CODE` | Private invite string, at least 12 characters; use a long random value. Share only with intended users. Rotating it blocks old invites without affecting existing accounts. |
+| `DATA_REPO_SSH` | `git@github.com:benhiley2304/Strength-Training-Tracker-Data.git` |
+| `GITHUB_DEPLOY_KEY_BASE64` | Base64-encoded private SSH deploy key, authorized to **write the private data repository only**. |
+| `GITHUB_KNOWN_HOSTS_BASE64` | Base64-encoded `known_hosts` content containing pinned official `github.com` SSH host keys. Provision from GitHub's authenticated/HTTPS metadata, not an unverified runtime key scan. SSH uses strict checking and fails closed. |
+| `DATA_REPO_BRANCH` | Optional; defaults to `main`. Only a simple branch name is accepted. |
+| `PORT` | Provided by Render; defaults to `3000` locally. |
+| `TRUST_PROXY` | Optional; set `true` only behind trusted ingress that appends/overwrites the actual client IP. Uses the rightmost `X-Forwarded-For` entry for per-IP rate limits. Leave false when directly exposed. |
+
+**Never** enable `STT_TEST_STORAGE` in production. The disk adapter requires `NODE_ENV=test` or the explicit local flag `STT_TEST_STORAGE=true`; it refuses `NODE_ENV=production` even if the flag is present. `STT_TEST_DIR` selects an isolated test directory (default `/tmp/stt-test-data`). These flags are for automated/local testing only, not an alternate production backend. Production does not fall back to disk when GitHub is unavailable.
+
+The production checkout is `/tmp/stt-data`; key material is written with restrictive permissions under `/tmp/stt-ssh`. Both are ephemeral working files. Every account read/write is protected by one process-wide asynchronous transaction lock and refreshes the branch from GitHub first. A write uses an atomic file replacement, commit and normal push — **never a force-push**. Failed pushes retry at most three times, refreshing and rerunning uniqueness/revision checks; a remote conflict returns `409`. A save is acknowledged only after the remote push succeeds. A network failure after GitHub accepted a push can still produce an uncertain/error response: refresh and resolve rather than assuming data was lost or blindly resending it.
+
+### Publish the migration launch address
+
+After the cloud service is healthy, set the public `CLOUD_URL` export in `cloud-config.js` to its HTTPS address. This file contains **only a public URL**, no credentials. Redeploy the existing static site with this change. Bump the service-worker `VERSION` whenever changing any shell asset or the launch URL.
+
+The local tracker then shows **Move to cloud accounts** on desktop and mobile. It explains that its download includes **all local users**, downloads a backup, and opens the cloud address. It never uploads anything. Keep that all-profiles file private. The old address and its local storage remain usable.
+
+On the cloud service:
+
+1. Create an account with a username, password, display name and invite code. Save the one-time recovery code in a password manager. **No email is collected or verified.**
+2. Settings → **Import a backup** → choose the export → explicitly choose **exactly one profile** from it. The selector starts empty, even for a one-profile backup.
+3. Confirm which person's data will replace this account. A local rollback is saved first. The selected profile is assigned to the signed-in account; no other profile from the file is uploaded. Imports replace rather than merge.
+4. Wait until **Saved to GitHub** is visible. Sign in to the same cloud address with the **same username and password** on the other device. The initial view pulls the server document first.
+
+An all-profiles file from another web address cannot be read automatically because browser storage is origin-specific. Uploading it is always explicit. The cloud profile menu contains only the signed-in account, editable display name, password/settings controls and logout — never a list of other users.
+
+## Cloud security and sync behavior
+
+- Usernames are normalized, case-insensitive, 3–32 ASCII letters/numbers/underscores/hyphens and must start with a letter/number. Display names can be changed; usernames identify the account. Passwords are 12–128 characters (maximum 512 UTF-8 bytes), salted with 24 random bytes and hashed using asynchronous Node `scrypt` (`N=32768`, `r=8`, `p=1`, 64-byte result). Passwords are never stored as plaintext.
+- Each account has one JSON document at `accounts/<SHA256(normalized-username)>.json`, containing hashed credentials, session version, one profile, theme, document revision and timestamps. API responses omit password/recovery hashes and session internals. Paths and account access come exclusively from authenticated identity, never an input pathname/account selector.
+- Sessions are signed with HMAC-SHA256, expire after 30 days, and use a host-only `__Host-stt_session` cookie with `HttpOnly; Secure; SameSite=Lax; Path=/`. No tokens are stored in JavaScript storage. Password changes/recovery increment the server-side session version, invalidating older sessions; logout revokes just the current session. Recovery codes are random 192-bit bearer secrets, stored only as SHA-256 hashes and rotated on reset. A reset displays the new code once.
+- Auth endpoints use bounded per-IP/per-username rate limiting. Credential/account-not-found failures are deliberately generic. Unsafe API methods require the exact configured Origin, cross-site fetches are refused, and no CORS access is offered. Input types, sizes, revisions, ranges and programme structure are checked. Request bodies, credentials and git errors are never logged. Auth/account responses and cloud account HTML use `Cache-Control: no-store`; the server serves only an explicit static-asset allowlist.
+- Edits are snapshotted to a cache keyed by the signed-in account ID and debounced for about 1.5 seconds. Set completion and workout completion request an immediate flush. “Pending”, “Saved to GitHub”, “Offline”, “Sync failed” and “Conflict” states are visible. Local snapshot failure also remains visible, even if GitHub saved successfully.
+- Updates require a matching revision (`If-Match` or JSON `revision`). A stale device gets `409` with **only its own latest server document**. The conflict dialog compares timestamps, revision, workout count and current session; timestamps are hints, not proof of completeness. First export this device's version, then confirm either **Use GitHub version** or **Keep this device's version**. Keeping local retries against the explicit latest revision, so a further race conflicts again. No blind last-writer-wins, automatic merge, or silent discard occurs.
+- Focus/visibility and a 45-second interval refresh only an authenticated, visible, clean account. Polling performs no writes/commits. A response arriving after a user edit is ignored. Offline/server failures do not replace the open document with defaults. Cross-tab cache changes pause saves. A pending device cache found after signing in requires an explicit recovery choice; it is not silently uploaded over the server.
+- An **already-open signed-in tab** remains editable offline, with snapshots and export. Reopening a cloud account requires an online session check; it does not expose a cached profile before authentication. The service worker never intercepts/caches `/api/` and does not store cloud auth/account HTML; local-only hosts retain the existing offline app shell. Public JS/CSS/fonts/icons may be cached.
+- Cloud caches/rollbacks are **not encrypted** and should only be used in trusted browsers. Successful logout clears active account memory and its device cache/rollback; export pending work first. Downloaded backups are outside the app and are not deleted by logout. Browser settings can prevent cleanup, in which case the status warns the user to clear site data. Use a private browsing session on shared devices.
+
+### Operational limits and recovery
+
+This is a small, invite-only tracker, **not a high-volume database**. GitHub commits and whole-document sync are suitable for this deliberately small use case, but do not provide database-grade throughput, transactions across multiple account files, guaranteed availability or automatic field-level conflict merging. The app operator and anyone with repository access can read training data and credential hashes; this is not end-to-end encryption. Old values remain in private Git history. Keep repository access restricted, retain independent exports, and never make the data repository public.
+
+The Render Free service can sleep when idle and take around a minute to wake. Network and GitHub delays can be longer; pending work is not confirmed saved until the UI says so. There are no guaranteed background writes or timer notifications. Keep the tab open or export if sync fails. A redeploy loses the disposable checkout, **not the data already pushed to GitHub**. Protect the deploy key and secrets; rotate/revoke compromised credentials. Restore repository backups carefully: restoring older account files can restore old password/session state, so rotate `SESSION_SECRET` after an operator-level rollback.
+
+Health/config check: `GET /api/config` returns JSON with `cloud: true` without requiring sign-in. Static hosts return a non-JSON 404/rewrite and stay local. A previously detected cloud host does not silently downgrade to local mode during an outage. There is no background keep-alive polling while signed out.
+
+### Cloud code and tests
+
+| File | Purpose |
+| --- | --- |
+| `server.js` | Dependency-free HTTP server, strict asset allowlist, Origin checks, API validation and account routes |
+| `server/auth.js` | Async scrypt, constant-time checks, HMAC sessions, recovery and bounded rate limits |
+| `server/storage.js` | Serialized Git transactions, atomic files, remote acknowledgement and test-only disk adapter |
+| `cloud.js` | Mode detection, account-scoped cache, dirty/revision sync and explicit conflicts |
+| `cloud-config.js` | Public, optional launch URL from the old local site |
+| `tests/cloud-server.test.js` | Auth privacy, CSRF, recovery, malformed inputs, revisions, failure and persistence |
+| `tests/cloud-client.test.js` | Offline/cache resilience, sync races, conflicts, explicit import constraints and isolation |
+| `tests/git-storage.test.js` | Real Git transactions against isolated local bare test repositories; acknowledgement, retries and concurrent commits |
+
+Run `npm run check && npm test`. Tests need Node 20/22 and Git, no production credentials or network services. The original 23 programme/model/local-storage regression tests remain included. Real GitHub/Render and two independent browser-context checks are deployment acceptance checks, not simulated by the unit suite.
+
+## Local-only mode reference
+
+The remainder documents the preserved static tracker. Statements below about no cloud or device-only profiles apply **only to the existing static/local mode**, not to the separate authenticated Node service.
+
 A static, local-first PWA for a twelve-session strength programme. Click **Ben Hiley** in the header to switch to Toby or Will, or add and rename a local profile. No account, authentication service, API, database server or cloud sync is involved.
 
-## Run and deploy
+## Local-only run and deploy
 
 Serve this directory with any static HTTP server. For example:
 

@@ -1,7 +1,7 @@
 {
   "name": "Strength Training Tracker",
   "short_name": "Strength Tracker",
-  "description": "A local-first 12-session strength training tracker with device-only profiles. No login or cloud sync.",
+  "description": "A twelve-session training log. Local profiles on static hosts; private account sync on the cloud service.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
