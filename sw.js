@@ -1,5 +1,5 @@
 /* One coherent release. Bump VERSION whenever any app-shell asset changes. */
-const VERSION = "strength-training-tracker-v6-cloud-1";
+const VERSION = "strength-training-tracker-v6-cloud-2";
 const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./icons.js", "./cloud.js", "./cloud-config.js", "./model.js", "./programme.js", "./manrope-latin.woff2", "./manifest.webmanifest", "./icon.svg", "./icon-maskable.svg"];
 const URLS = FILES.map(path => new URL(path, self.registration.scope).href);
 const KNOWN = new Set(URLS);
