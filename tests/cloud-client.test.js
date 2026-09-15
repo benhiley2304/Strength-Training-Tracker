@@ -25,7 +25,7 @@ test('dirty changes debounce into a revision-checked snapshot and become saved o
   const saving = f.store.flush(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(f.store.dirty, true); assert.match(f.store.message, /Pending/); assert.equal(received.options.headers['If-Match'], '"0"');
   const result = remote(1); result.profile.bw = 80; release(result);
-  assert.equal(await saving, true); assert.equal(f.store.dirty, false); assert.equal(f.store.revision, 1); assert.match(f.store.message, /Saved to GitHub/);
+  assert.equal(await saving, true); assert.equal(f.store.dirty, false); assert.equal(f.store.revision, 1); assert.match(f.store.message, /All changes saved/);
 });
 test('edits made while a save is in flight remain dirty and use the acknowledged next revision', async t => {
   let release, count = 0; const bodies = [];
@@ -74,7 +74,7 @@ test('blocked local storage warns without crashing or claiming a device backup e
   const f = await fixture(t, async () => remote(1), storage);
   const next = clone(f.state()); next.profiles[0].bw = 80;
   assert.equal(f.store.save(next), false); assert.equal(f.store.cacheFailed, true); assert.match(f.store.message, /backup unavailable/);
-  await f.store.flush(); assert.match(f.store.message, /Saved to GitHub · device backup unavailable/);
+  await f.store.flush(); assert.match(f.store.message, /All changes saved · device backup unavailable/);
 });
 test('pending per-account cache requires explicit recovery after the first remote pull', async t => {
   const storage = memory(), next = documentState(remote()); next.profiles[0].bw = 93;

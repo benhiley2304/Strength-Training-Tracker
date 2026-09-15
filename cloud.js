@@ -4,10 +4,10 @@ export const cacheKey = id => `strengthTrackerCloudCacheV1:${id}`;
 export async function api(path, options = {}) {
   let response;
   try { response = await fetch(path, {credentials: 'same-origin', cache: 'no-store', ...options, signal: options.signal || AbortSignal.timeout(90000), headers: {'Content-Type': 'application/json', ...options.headers}}); }
-  catch { throw Object.assign(new Error(navigator.onLine === false ? 'Offline · changes are kept on this device. Reconnect to sync.' : 'Cloud unavailable · changes are not confirmed saved. Please retry; the free server may be waking up.'), {status: 0}); }
-  if (!response.headers.get('content-type')?.includes('application/json')) throw Object.assign(new Error('Cloud unavailable · unexpected response. Your work has not been reset.'), {status: 0});
+  catch { throw Object.assign(new Error(navigator.onLine === false ? 'Offline · changes are kept on this device. Reconnect to sync.' : 'Connection unavailable · changes are not confirmed saved. Please retry; the service may be waking up.'), {status: 0}); }
+  if (!response.headers.get('content-type')?.includes('application/json')) throw Object.assign(new Error('Connection unavailable · unexpected response. Your work has not been reset.'), {status: 0});
   const data = await response.json();
-  if (!response.ok) throw Object.assign(new Error(data.error || 'Cloud request failed.'), {status: response.status, latest: data.latest});
+  if (!response.ok) throw Object.assign(new Error(data.error || 'Request failed. Please try again.'), {status: response.status, latest: data.latest});
   return data;
 }
 export async function detectCloud() {
@@ -29,7 +29,7 @@ export async function detectCloud() {
   }
 }
 export function documentState(data) {
-  if (!data?.account || data.profile?.id !== data.account.id) throw new Error('Invalid cloud response.');
+  if (!data?.account || data.profile?.id !== data.account.id) throw new Error('Invalid account response.');
   return validateState({app: APP, version: 3, revision: data.revision, theme: data.theme, activeProfileId: data.account.id, profiles: [data.profile]});
 }
 export class CloudStore {
@@ -50,7 +50,7 @@ export class CloudStore {
   }
   async boot() {
     try { await this.adopt(await this.request('/api/account')); return true; }
-    catch (e) { if (e.status !== 401) this.problem(e.message); else this.status('Cloud account · sign in to continue'); return false; }
+    catch (e) { if (e.status !== 401) this.problem(e.message); else this.status('Sign in to continue'); return false; }
   }
   async adopt(document) {
     const remote = documentState(document);
@@ -69,7 +69,7 @@ export class CloudStore {
     }
     this.onState?.(this.state);
     if (this.conflict) { this.status('Conflict · recover device changes or use the server version'); this.onConflict?.(this.conflict); }
-    else if (!this.locked) { this.writeCache(); this.status(this.cacheFailed ? 'Cloud loaded · device backup unavailable' : 'Saved to GitHub · up to date'); }
+    else if (!this.locked) { this.writeCache(); this.status(this.cacheFailed ? 'Account loaded · device backup unavailable' : 'All changes saved'); }
   }
   save(state) {
     if (!this.account || this.sessionExpired) { this.problem('Sign in again before syncing. Export your work before leaving.'); return false; }
@@ -84,7 +84,7 @@ export class CloudStore {
     if (this.inflight) { await this.inflight; if (this.dirty && !this.failed && !this.locked) return this.flush(); return !this.dirty && !this.failed; }
     if (!this.account || this.sessionExpired || this.locked || !this.dirty) return !this.dirty && !this.locked;
     const generation = this.generation, edits = this.edits, state = clone(this.state);
-    this.status('Pending · syncing to GitHub');
+    this.status('Pending · saving online');
     this.inflight = (async () => {
       try {
         const result = await this.request('/api/profile', {method: 'PUT', headers: {'If-Match': `"${this.revision}"`}, body: JSON.stringify({revision: this.revision, profile: state.profiles[0], theme: state.theme})});
@@ -93,7 +93,7 @@ export class CloudStore {
         this.revision = result.revision; this.updatedAt = result.updatedAt; this.state.revision = result.revision; this.failed = false;
         this.dirty = this.edits !== edits;
         this.writeCache();
-        this.status(this.locked ? 'Conflict · another tab changed this account' : this.dirty ? 'Pending · more changes waiting' : this.cacheFailed ? 'Saved to GitHub · device backup unavailable' : `Saved to GitHub · ${new Date(result.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`);
+        this.status(this.locked ? 'Conflict · another tab changed this account' : this.dirty ? 'Pending · more changes waiting' : this.cacheFailed ? 'All changes saved · device backup unavailable' : `All changes saved · ${new Date(result.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`);
         if (this.dirty && !this.locked) this.schedule();
       } catch (e) {
         if (generation !== this.generation) return;
@@ -119,7 +119,7 @@ export class CloudStore {
         this.revision = remote.revision; this.updatedAt = remote.updatedAt; this.state = documentState(remote);
         this.writeCache(); if (!this.locked) this.onState?.(this.state);
       }
-      this.failed = false; this.status(this.locked ? 'Conflict · another tab changed this account' : this.cacheFailed ? 'Saved to GitHub · device backup unavailable' : 'Saved to GitHub · up to date');
+      this.failed = false; this.status(this.locked ? 'Conflict · another tab changed this account' : this.cacheFailed ? 'All changes saved · device backup unavailable' : 'All changes saved');
     } catch (e) {
       if (generation !== this.generation) return;
       if (e.status === 401) { this.sessionExpired = true; this.onAuthLost?.(); }
@@ -140,7 +140,7 @@ export class CloudStore {
     else { this.dirty = true; this.edits++; }
     this.writeCache(true); this.onState?.(this.state);
     if (choice === 'local') return this.flush();
-    this.status(this.cacheFailed ? 'Server version loaded · device backup unavailable' : 'Saved to GitHub · server version loaded'); return true;
+    this.status(this.cacheFailed ? 'Server version loaded · device backup unavailable' : 'All changes saved · server version loaded'); return true;
   }
   rollback() {
     try { const raw = this.storage.getItem(`${cacheKey(this.account.id)}:rollback`); return raw ? JSON.parse(raw) : null; }
@@ -170,7 +170,7 @@ export class CloudStore {
     let cleanupFailed = false;
     try { this.storage.removeItem(cacheKey(this.account.id)); this.storage.removeItem(`${cacheKey(this.account.id)}:rollback`); } catch { cleanupFailed = true; }
     this.account = null; this.state = null; this.raw = null; this.conflict = null; this.dirty = false; this.locked = false; this.failed = false; this.sessionExpired = false;
-    this.status(cleanupFailed ? 'Signed out · browser cache cleanup failed; clear this site’s data on shared devices' : 'Cloud account · signed out');
+    this.status(cleanupFailed ? 'Signed out · browser cache cleanup failed; clear this site’s data on shared devices' : 'Signed out');
   }
   storageChanged(event) {
     if (this.account && event.key === cacheKey(this.account.id) && event.newValue !== this.raw) {

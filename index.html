@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#202329">
   <meta name="description" content="Your twelve-session strength programme. Log sets, switch local profiles and follow your progress. Local logging and private account sync.">
-  <title>Train · Strength Training Tracker</title>
+  <title>Strength Training Tracker</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./app.js"></script>
 </head>
-<body>
-  <a class="skip" href="#main">Skip to workout</a>
+<body class="is-loading">
+  <a class="skip" href="#main">Skip to main content</a>
   <aside class="sidebar" aria-label="App sidebar">
-    <a class="brand" href="#train" aria-label="Strength Tracker home">
-      <span class="brand-icon" data-icon="dumbbell"></span>
-      <span>STRENGTH<span class="brand-sub">Training log</span></span>
+    <a class="brand" href="#train" aria-label="Strength Training Tracker home">
+      <svg class="brand-mark" viewBox="0 0 64 64" width="36" height="36" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="20" width="7" height="24" rx="3.5"/><rect x="16" y="13" width="8" height="38" rx="4"/><rect x="40" y="13" width="8" height="38" rx="4"/><rect x="51" y="20" width="7" height="24" rx="3.5"/><rect class="brand-bar" x="24" y="28" width="16" height="8" rx="4"/></svg>
+      <span class="brand-name">Strength Training <span>Tracker</span></span>
     </a>
     <div class="sidebar-label">Workspace</div>
     <nav id="navigation" class="navigation" aria-label="Main navigation">
@@ -25,18 +25,29 @@
       <a href="#progress" data-view="progress"><span class="nav-symbol" data-icon="chart"></span><span>Progress</span></a>
       <a href="#settings" data-view="settings"><span class="nav-symbol" data-icon="sliders"></span><span>Settings</span></a>
     </nav>
-    <div class="sidebar-bottom">Stored on this device<p>No account. No cloud.<br>Keep a backup of your training.</p><button class="sidebar-export" data-action="export">Export a backup <span data-icon="download"></span></button></div>
+    <div class="sidebar-bottom">On this device<p>No account. No automatic sync.<br>Keep a backup of your training.</p><button class="sidebar-export" data-action="export">Export a backup <span data-icon="download"></span></button></div>
   </aside>
   <div class="app-shell">
     <header class="topbar">
-      <div class="topbar-location"><span class="desktop-only">Training log</span><span class="mobile-brand">STRENGTH</span><span class="topbar-divider">/</span><span id="view-label">Train</span></div>
-      <div class="topbar-actions"><button id="theme-toggle" class="icon-button" data-action="theme" aria-label="Switch to dark appearance" title="Change appearance" data-icon="moon"></button><button id="profile-button" data-action="profiles" class="profile-button" aria-haspopup="dialog"><span id="profile-avatar" class="avatar">—</span><span><span id="profile-name">Opening…</span><small>Local profile</small></span><span class="profile-chevron" data-icon="chevron-down"></span></button></div>
+      <div class="topbar-location"><a class="header-brand" href="#train" aria-label="Strength Training Tracker home"><svg class="brand-mark" viewBox="0 0 64 64" width="32" height="32" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="20" width="7" height="24" rx="3.5"/><rect x="16" y="13" width="8" height="38" rx="4"/><rect x="40" y="13" width="8" height="38" rx="4"/><rect x="51" y="20" width="7" height="24" rx="3.5"/><rect class="brand-bar" x="24" y="28" width="16" height="8" rx="4"/></svg><span class="brand-name">Strength Training <span>Tracker</span></span></a><span class="topbar-divider">/</span><span id="view-label">Train</span></div>
+      <div class="topbar-actions"><button id="theme-toggle" class="icon-button" data-action="theme" aria-label="Switch to dark appearance" title="Change appearance" data-icon="moon"></button><button id="profile-button" data-action="profiles" class="profile-button" aria-haspopup="dialog"><span id="profile-avatar" class="avatar">—</span><span><span id="profile-name">Your profile</span><small>Local profile</small></span><span class="profile-chevron" data-icon="chevron-down"></span></button></div>
     </header>
     <div id="storage-error" class="storage-warning" role="alert" hidden></div>
     <div id="update-banner" class="update-banner" hidden><span>A new version is ready. Your saved data stays here.</span><button data-action="update">Update & reload</button></div>
-    <div id="cloud-launch-banner" class="update-banner" hidden><span>This address stays local. Want the same account on phone & desktop?</span><button data-action="launch-cloud">Move to cloud accounts</button></div>
-    <main id="main" tabindex="-1"></main>
-    <footer class="app-footer"><span id="save-status" role="status" aria-live="polite">Opening tracker…</span><span id="sync-actions"></span></footer>
+    <div id="cloud-launch-banner" class="update-banner" hidden><span>On this device. Want the same account on phone & desktop?</span><button data-action="launch-cloud">Use synced tracker</button></div>
+    <main id="main" tabindex="-1">
+      <section class="boot-screen" data-testid="tracker-loading" aria-labelledby="boot-title">
+        <div class="auth-brand"><svg class="brand-mark" viewBox="0 0 64 64" width="48" height="48" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="20" width="7" height="24" rx="3.5"/><rect x="16" y="13" width="8" height="38" rx="4"/><rect x="40" y="13" width="8" height="38" rx="4"/><rect x="51" y="20" width="7" height="24" rx="3.5"/><rect class="brand-bar" x="24" y="28" width="16" height="8" rx="4"/></svg><span class="brand-name">Strength Training <span>Tracker</span></span></div>
+        <div class="panel boot-panel">
+          <h1 id="boot-title">Getting your tracker ready</h1>
+          <p id="boot-copy" class="muted" role="status">Checking your connection.</p>
+          <div class="boot-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p id="boot-delay" class="small muted" hidden>The service may be waking up. You can wait or retry. Your data has not been reset.</p>
+          <a href="" id="boot-retry" class="text-button" data-testid="loading-retry">Retry connection</a>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer"><span id="save-status" role="status" aria-live="polite">Checking connection</span><span id="sync-actions"></span></footer>
   </div>
   <section id="rest-dock" class="rest-dock" aria-label="Rest timer" hidden></section>
   <dialog id="profile-dialog" aria-labelledby="profile-dialog-title"></dialog>
@@ -45,6 +56,6 @@
   <dialog id="cloud-dialog" aria-labelledby="cloud-title"></dialog>
   <input id="import-file" type="file" accept=".json,application/json" hidden aria-label="Choose tracker backup">
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <noscript><p class="storage-warning">JavaScript is required to run this local training log. No account is needed.</p></noscript>
+  <noscript><p class="storage-warning">JavaScript is required to use Strength Training Tracker. Enable it, then reload this page.</p></noscript>
 </body>
 </html>

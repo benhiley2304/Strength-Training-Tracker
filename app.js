@@ -1,6 +1,6 @@
 import {sessions, conditioning, targetReps, exerciseFor} from "./programme.js";
 import {APP, KEY, Store, newProfile, newDraft, blankSet, clone, wrap, setError, completedSets, estimate, volume, workloadWeeks, parseImport, validateState} from "./model.js";
-import {icon, populateIcons} from "./icons.js";
+import {icon, populateIcons, brandMark} from "./icons.js";
 import {CloudStore, api, detectCloud} from "./cloud.js";
 import {CLOUD_URL} from "./cloud-config.js";
 
@@ -14,6 +14,14 @@ const duration = seconds => {
   return `${Math.floor(n / 60).toString().padStart(2, "0")}:${(n % 60).toString().padStart(2, "0")}`;
 };
 const titles = {train: "Train", programme: "Programme", progress: "Progress", settings: "Settings"};
+// The static brand and skeleton are already visible before module or network loading.
+// This timer only changes presentation; host detection and account checks stay authoritative.
+const bootDelay = setTimeout(() => {
+  document.body.classList.add('loading-delayed');
+  if ($('#boot-title')) $('#boot-title').textContent = 'Taking a little longer';
+  if ($('#boot-copy')) $('#boot-copy').textContent = 'Still checking your connection.';
+  if ($('#boot-delay')) $('#boot-delay').hidden = false;
+}, 8000);
 const mode = await detectCloud();
 const isCloud = mode !== "local";
 let authView = "login", authBusy = false, recoveryOnce = null, recoveryUsername = '', conflictExported = false;
@@ -202,7 +210,7 @@ function renderProgress() {
 }
 function renderSettings() {
   const p = profile();
-  $("#main").innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="muted">${isCloud ? "Your cloud account, training preferences and backups." : "Training preferences, local profiles and backups."}</p></div></div><div class="settings-layout">
+  $("#main").innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="muted">${isCloud ? "Your account, training preferences and backups." : "Training preferences, local profiles and backups."}</p></div></div><div class="settings-layout">
     <section class="panel settings-panel"><h2>Training preferences</h2><p class="small muted">These settings belong to ${escape(p.name)}.</p><label class="form-label">Default bodyweight (kg)<input id="profile-bw" type="number" min="20" max="500" step="any" inputmode="decimal" placeholder="Not recorded" value="${p.bw ?? ""}"></label><p class="small muted">Used for new workouts only. Previous bodyweight snapshots never change.</p><label class="form-label">Rest after completing a set<select id="rest-default">${[[0, "Off"], [60, "1 minute"], [90, "1 min 30 sec"], [120, "2 minutes"], [180, "3 minutes"], [300, "5 minutes"], ...(![0, 60, 90, 120, 180, 300].includes(p.restSeconds) ? [[p.restSeconds, `${p.restSeconds} seconds`]] : [])].map(([value, label]) => `<option value="${value}" ${p.restSeconds === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label class="form-label">Appearance<select id="appearance">${["light", "dark", "system"].map(t => `<option value="${t}" ${state.theme === t ? "selected" : ""}>${t[0].toUpperCase() + t.slice(1)}</option>`).join("")}</select></label></section>
     ${isCloud ? cloudAccountSettings() : `<section class="panel settings-panel"><h2>Local profiles</h2><p>Train alongside your mates. Keep each person's sets, history and check-ins separate.</p><div class="profile-summary"><span class="avatar">${escape(p.name.split(/\s+/).slice(0, 2).map(s => s[0]).join("").toUpperCase())}</span><span><strong>${escape(p.name)}</strong><small>${state.profiles.length} local profiles on this device</small></span></div><button class="button secondary" data-action="profiles">Switch or manage profiles</button><p class="privacy-note">Profiles are not sign-ins or private accounts. Anyone with access to this browser can open every profile. Data does not sync between devices, browsers or web addresses.</p></section>`}
     <section class="panel settings-panel"><h2>Back up & restore</h2><p>Browser data can be cleared or lost. Keep a JSON backup somewhere safe.</p><div class="settings-buttons"><button class="button primary" data-action="export">${isCloud ? "Export this account" : "Export all profiles"} ${icon("download")}</button><button class="button secondary" data-action="import">Import a backup ${icon("upload")}</button><button class="text-button" data-action="rollback-export">Download last rollback backup</button></div><p class="small muted">${isCloud ? "Exports contain only this account. Importing a multi-profile backup asks you to choose exactly one person; nobody else is uploaded. A device rollback is saved first. Imports replace, not merge." : "Exports include all profiles, drafts, readiness, bodyweight snapshots and running timer timestamps. A restore asks for confirmation and stores a rollback before replacing anything."}</p><p id="import-status" role="status" class="inline-status"></p>${store.locked ? '<button class="button secondary" data-action="recovery-export">Export unreadable recovery data</button>' : ""}</section>
@@ -217,7 +225,7 @@ function renderProfiles() {
   showDialog("#profile-dialog", `<div class="dialog-heading"><div><h2 id="profile-dialog-title">Local profiles</h2></div>${closeButton}</div><p class="dialog-copy">Switch profiles. Your current workout stays saved on this device.</p>
     <div class="profile-list">${state.profiles.map(person => `<div class="profile-option ${person.id === p.id ? "active" : ""}"><button data-action="switch-profile" data-id="${escape(person.id)}" aria-pressed="${person.id === p.id}"><span class="avatar">${escape(person.name.split(/\s+/).slice(0, 2).map(s => s[0]).join("").toUpperCase())}</span><span><strong>${escape(person.name)}</strong><small>${person.history.length} ${person.history.length === 1 ? "workout" : "workouts"} · ${person.id === p.id ? "Active now" : "Local profile"}</small></span><span class="profile-check">${icon(person.id === p.id ? "check" : "arrow-right")}</span></button><button class="rename-button" data-action="rename-profile" data-id="${escape(person.id)}" aria-label="Rename ${escape(person.name)}">Rename</button></div>`).join("")}</div>
     <form id="profile-form" class="profile-form"><label for="profile-name-input">${editProfileId ? "Rename profile" : "Add a profile"}</label><div class="inline-form"><input id="profile-name-input" name="name" maxlength="40" required placeholder="Your mate's name" value="${editProfileId ? escape(state.profiles.find(x => x.id === editProfileId)?.name) : ""}"><button class="button primary" type="submit">${editProfileId ? "Save" : "Add"}</button>${editProfileId ? '<button class="button secondary" type="button" data-action="cancel-rename">Cancel</button>' : ""}</div><p id="profile-form-error" class="field-error" role="alert"></p></form>
-    <p class="privacy-note">On this device only. No login, no cloud sync. Profiles organise data; they do not lock it away from other people using this browser.</p>`);
+    <p class="privacy-note">On this device only. No login or automatic sync. Profiles organise data; they do not lock it away from other people using this browser.</p>`);
 }
 function historyDetail(id) {
   const h = profile().history.find(x => x.id === id);
@@ -277,7 +285,7 @@ function finishWorkout() {
       const saved = persist();
       if (isCloud) void store.flush();
       openExercises = new Set([0]); render(); finishBusy = false;
-      toast(isCloud ? "Workout kept on this device · check cloud sync status before closing." : saved ? `${sets.length} ${sets.length === 1 ? "set" : "sets"} saved. Good work, ${p.name.split(" ")[0]}.` : "Workout kept in this tab only. Export it now.");
+      toast(isCloud ? "Workout kept on this device · check sync status before closing." : saved ? `${sets.length} ${sets.length === 1 ? "set" : "sets"} saved. Good work, ${p.name.split(" ")[0]}.` : "Workout kept in this tab only. Export it now.");
       window.scrollTo({top: 0, behavior: "instant"});
     });
 }
@@ -286,6 +294,16 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'toggle-password') {
+    const input = document.getElementById(button.dataset.passwordFor);
+    if (!input || !['password', 'text'].includes(input.type)) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(show));
+    button.setAttribute('aria-label', `${show ? 'Hide' : 'Show'} ${button.dataset.passwordLabel.toLowerCase()}`);
+    button.innerHTML = `${icon(show ? 'eye-off' : 'eye')}<span>${show ? 'Hide' : 'Show'}</span>`;
+    return;
+  }
   if (isCloud && handleCloudClick(button)) return;
   if (!isCloud && action === "launch-cloud") { launchCloud(); return; }
   if (isCloud && !signedIn() && !["close-dialog", "confirm"].includes(action)) return;
@@ -373,7 +391,7 @@ document.addEventListener("click", event => {
     }, true); return;
   }
   if (action === "update" && waitingWorker) {
-    if (isCloud && (store.dirty || store.inflight)) { toast("Wait for cloud sync, or export pending work before reloading."); return; }
+    if (isCloud && (store.dirty || store.inflight)) { toast("Wait for sync, or export pending work before reloading."); return; }
     if (!persist()) { toast("Export your work before updating; local saving is unavailable."); return; }
     waitingWorker.postMessage({type: "ACTIVATE_UPDATE"}); return;
   }
@@ -507,30 +525,34 @@ if ("serviceWorker" in navigator) {
 populateIcons();
 updateModeChrome();
 if (isCloud) {
-  $("#main").innerHTML = '<section class="panel auth-panel"><h1>Opening your cloud account</h1><p class="muted">The free server can take a little while to wake up. No local profiles are uploaded.</p></section>';
+  if ($("#boot-copy")) $("#boot-copy").textContent = "Checking your account. Your local profiles stay separate.";
   if (mode === "cloud") await store.boot();
-  else store.status("Cloud unavailable · retry when online. No data has been reset.");
+  else store.status("Connection unavailable · retry when online. No data has been reset.");
   window.addEventListener("focus", () => void store.refresh());
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void store.refresh(); });
   window.addEventListener("online", () => { if (store.dirty) void store.flush(); else void store.refresh(); });
   window.addEventListener("offline", () => { if (signedIn()) store.status("Offline · changes stay on this device until sync succeeds"); });
   setInterval(() => { if (document.visibilityState === "visible") void store.refresh(); }, 45000);
 }
+clearTimeout(bootDelay);
+document.body.classList.remove('is-loading', 'loading-delayed');
 appReady = true;
+if (!isCloud && !store.failed && !store.locked) $("#save-status").textContent = "On this device · ready to train";
 render();
 if (isCloud && store.conflict) showCloudConflict();
 
 // Cloud-only UI is kept alongside the existing local UI. Local profiles are never a cloud account picker.
 function updateModeChrome() {
   $('.app-shell').classList.toggle('cloud-mode', isCloud);
+  document.body.classList.toggle('signed-out', isCloud && !signedIn());
   if (isCloud && $('.topbar').nextElementSibling !== $('.app-footer')) $('.topbar').after($('.app-footer'));
   if ($('#cloud-launch-banner')) $('#cloud-launch-banner').hidden = isCloud || !validCloudURL();
   if (isCloud) {
-    $('#profile-button small').textContent = signedIn() ? 'Cloud account' : 'Sign in';
-    $('.sidebar-bottom').innerHTML = `Private cloud account<p>Same sign-in on phone & desktop.<br>Syncs to private GitHub storage.</p><button class="sidebar-export" data-action="${signedIn() ? 'export' : 'cloud-local-export'}">${signedIn() ? 'Export this account' : 'Export existing local backup'} ${icon('download')}</button>`;
+    $('#profile-button small').textContent = signedIn() ? 'Your account' : 'Sign in';
+    $('.sidebar-bottom').innerHTML = `Your account<p>Same sign-in on phone & desktop.<br>Your training, kept in sync.</p><button class="sidebar-export" data-action="${signedIn() ? 'export' : 'cloud-local-export'}">${signedIn() ? 'Export this account' : 'Export existing local backup'} ${icon('download')}</button>`;
   } else {
-    $('#profile-button small').textContent = 'Local profile';
-    if (validCloudURL()) $('.sidebar-bottom').innerHTML = `Stored on this device<p>No account. No automatic uploads.<br>This address stays local.</p><button class="sidebar-export" data-action="export">Export all local profiles ${icon('download')}</button><button class="sidebar-export cloud-launch" data-action="launch-cloud">Move to cloud accounts ${icon('arrow-right')}</button>`;
+    $('#profile-button small').textContent = 'On this device';
+    if (validCloudURL()) $('.sidebar-bottom').innerHTML = `On this device<p>No account. No automatic uploads.<br>This address stays local.</p><button class="sidebar-export" data-action="export">Export all local profiles ${icon('download')}</button><button class="sidebar-export cloud-launch" data-action="launch-cloud">Use synced tracker ${icon('arrow-right')}</button>`;
   }
   updateSyncControls();
 }
@@ -542,39 +564,47 @@ function updateSyncControls() {
 function validCloudURL() { try { const url = new URL(CLOUD_URL); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch { return null; } }
 function launchCloud() {
   if (!validCloudURL()) return;
-  confirmDialog('Move one person to a cloud account', 'First download a backup containing ALL local users on this browser, including your mates. Keep it private. The cloud site opens separately; sign in and explicitly choose exactly one profile to import. Nothing uploads from this local address.', 'Export all profiles & open cloud', () => { exportAll(); window.open(validCloudURL(), '_blank', 'noopener,noreferrer'); });
+  confirmDialog('Use the synced tracker', 'First download a backup containing ALL local users on this browser, including your mates. Keep it private. The synced tracker opens separately; sign in and explicitly choose exactly one profile to import. Nothing uploads from this local address.', 'Export all profiles & continue', () => { exportAll(); window.open(validCloudURL(), '_blank', 'noopener,noreferrer'); });
+}
+function passwordField({id, name = 'password', label = 'Password', autocomplete = 'current-password', hint = ''}) {
+  return `<div class="password-field"><label class="form-label" for="${id}">${label}</label><div class="password-input"><input name="${name}" id="${id}" type="password" autocomplete="${autocomplete}" minlength="12" maxlength="128" ${hint ? `aria-describedby="${hint}"` : ''} required><button type="button" class="password-toggle" data-action="toggle-password" data-password-for="${id}" data-password-label="${label}" data-testid="toggle-${id}" aria-controls="${id}" aria-label="Show ${label.toLowerCase()}" aria-pressed="false">${icon('eye')}<span>Show</span></button></div></div>`;
 }
 function renderAuth() {
   updateModeChrome();
   $('#profile-name').textContent = 'Sign in'; $('#profile-avatar').textContent = '—'; $('#rest-dock').hidden = true;
   $('#view-label').textContent = 'Account'; document.title = `Account · ${APP}`;
   const signup = authView === 'signup', reset = authView === 'recover';
-  $('#main').innerHTML = `<div class="page-heading"><div><h1>${signup ? 'Create your account' : reset ? 'Recover your account' : 'Your training, on every device'}</h1><p class="muted">One private account. The same progress on phone and desktop.</p></div></div>
-    <section class="panel auth-panel"><p class="eyebrow">${signup ? 'Invite-only registration' : reset ? 'Recovery code required' : 'Cloud sign-in'}</p>
-    <p class="small muted">${signup ? 'Use a unique password. No email is collected or verified. Your recovery code is the only self-service way to reset a forgotten password.' : reset ? 'Enter your username, saved recovery code and a new password. All existing sessions and the old recovery code will be invalidated.' : 'Sign in to load your account from private GitHub storage. Local-only profiles are not uploaded or shown as other accounts.'}</p>
+  $('#main').innerHTML = `<div class="auth-screen" data-testid="account-landing">
+    <div class="auth-brand">${brandMark(48)}<span class="brand-name">Strength Training <span>Tracker</span></span></div>
+    <section class="panel auth-panel" aria-labelledby="auth-title">
+    <div class="auth-heading"><div><h1 id="auth-title">${signup ? 'Create your account' : reset ? 'Reset your password' : 'Welcome back'}</h1><p class="muted">${signup ? 'Your training. One account. Every device.' : reset ? 'Use the recovery code you saved.' : 'Pick up where you left off.'}</p></div><div class="auth-bars" aria-hidden="true"><span></span><span></span><span></span></div></div>
+    ${mode !== 'cloud' || store.failed || /cleanup failed/.test(store.message || '') ? `<div class="auth-connection" role="status"><p>${escape(store.message || 'Connection unavailable. Your data has not been reset.')}</p><button class="text-button" data-action="cloud-reload">Retry connection</button></div>` : ''}
+    ${store.sessionExpired ? '<p class="privacy-note">Your session has expired. Sign in again to continue. Export any unsynced work before leaving.</p>' : ''}
+    ${reset ? '<p class="privacy-note" id="recovery-help">There is no email recovery. Enter your username and saved recovery code below. Without the code, you cannot reset your password here. Resetting signs out all devices and replaces your recovery code.</p>' : ''}
     <form id="cloud-auth-form" class="cloud-form" data-testid="auth-form">
-      <label class="form-label">Username<input name="username" id="auth-username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_-]{2,31}" required placeholder="your_username"></label>
-      ${signup ? '<p class="small muted">3–32 letters, numbers, underscores or hyphens. Usernames are not case-sensitive.</p><label class="form-label">Public display name<input name="name" id="auth-name" autocomplete="nickname" maxlength="40" required placeholder="Your name"></label><label class="form-label">Invite code<input name="inviteCode" id="auth-invite" type="password" autocomplete="off" maxlength="256" required></label>' : ''}
-      ${reset ? '<label class="form-label">Recovery code<input name="recoveryCode" id="auth-recovery" autocomplete="off" spellcheck="false" maxlength="64" required></label>' : ''}
-      <label class="form-label">${reset ? 'New password' : 'Password'}<input name="password" id="auth-password" type="password" autocomplete="${signup || reset ? 'new-password' : 'current-password'}" minlength="12" maxlength="128" required></label>
-      <p class="small muted">12–128 characters. Use a password manager; this is not your GitHub password.</p>
+      <div class="auth-field"><label class="form-label" for="auth-username">Username</label><input name="username" id="auth-username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_-]{2,31}" ${signup ? 'aria-describedby="username-hint"' : ''} required placeholder="your_username">${signup ? '<p id="username-hint" class="field-hint">3–32 letters, numbers, underscores or hyphens.</p>' : ''}</div>
+      ${signup ? '<div class="auth-field"><label class="form-label" for="auth-name">Display name</label><input name="name" id="auth-name" autocomplete="nickname" maxlength="40" required placeholder="Your name"></div><div class="auth-field"><label class="form-label" for="auth-invite">Invite code</label><input name="inviteCode" id="auth-invite" type="password" autocomplete="off" minlength="12" maxlength="256" aria-describedby="invite-hint" required><p id="invite-hint" class="field-hint">Ask your host for an invitation code.</p></div>' : ''}
+      ${reset ? '<label class="form-label">Recovery code<input name="recoveryCode" id="auth-recovery" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="64" aria-describedby="recovery-help" required></label>' : ''}
+      ${passwordField({id: 'auth-password', label: reset ? 'New password' : 'Password', autocomplete: signup || reset ? 'new-password' : 'current-password', hint: signup || reset ? 'password-hint' : ''})}
+      ${signup || reset ? '<p id="password-hint" class="field-hint">12–128 characters. Choose a unique password.</p>' : ''}
+      ${signup ? '<p class="field-hint">Next, save your recovery code. It is the only way to reset a forgotten password.</p>' : ''}
       <p id="auth-error" class="field-error" role="alert"></p>
+      <p id="auth-progress" class="field-hint" role="status" hidden></p>
       <button class="button primary" type="submit" data-testid="auth-submit">${signup ? 'Create account' : reset ? 'Reset password' : 'Sign in'}</button>
     </form>
-    <div class="auth-links"><button class="text-button" data-action="cloud-auth-login">Sign in</button><button class="text-button" data-action="cloud-auth-signup">I have an invite</button><button class="text-button" data-action="cloud-auth-recover">Forgot password</button></div>
-    <p class="privacy-note">Use the same username and password on both devices. The free server may take around a minute to wake up. GitHub is private storage, not a GitHub sign-in.</p>
+    <div class="auth-links">${signup || reset ? '<button class="text-button" data-action="cloud-auth-login">Back to sign in</button>' : '<button class="text-button" data-action="cloud-auth-signup">Create account</button><button class="text-button" data-action="cloud-auth-recover">Forgot password</button>'}</div>
     ${store.sessionExpired && store.dirty ? '<button class="button secondary" data-action="cloud-pending-export">Export unsynced account work</button>' : ''}
-    <details class="local-migration-note"><summary>Existing local training data?</summary><p class="small muted">Your old local tracker remains separate and usable. Export a backup there, then sign in here and use Settings → Import a backup. You must choose exactly one profile. Files labelled “all profiles” include everyone on that browser; keep them private.</p><button class="text-button" data-action="cloud-local-export">Export this browser’s local-only backup (all local users)</button></details>
-    ${mode !== 'cloud' ? '<button class="button secondary" data-action="cloud-reload">Retry connection</button>' : ''}</section>`;
+    <details class="local-migration-note"><summary>Existing local training data? ${icon('chevron-down')}</summary><p class="small muted">Your old local tracker remains separate and usable. Export a backup there, then sign in here and use Settings → Import a backup. You must choose exactly one profile. Files labelled “all profiles” include everyone on that browser; keep them private.</p><button class="text-button" data-action="cloud-local-export">Export this browser’s local-only backup (all local users)</button></details>
+    </section><p class="auth-footnote">Your own username and password. The same on every device.</p></div>`;
 }
 function cloudAccountSettings() {
-  return `<section class="panel settings-panel"><h2>Cloud account</h2><p><strong>${escape(profile().name)}</strong><br><span class="small muted">@${escape(store.account.username)} · this account only</span></p><button class="button secondary" data-action="profiles">Account & sign-in settings</button><p class="privacy-note">Other people's accounts cannot be opened from this menu. Sign out, then use their own credentials. Browser snapshots are not encrypted; only use a trusted device. Signing out clears this account's cache and rollback, after you have exported pending changes.</p><p class="small muted">Private GitHub storage is maintained by the app operator; it is not end-to-end encrypted. Keep your own exports. The free server sleeps when idle and may take around a minute to wake.</p></section>`;
+  return `<section class="panel settings-panel"><h2>Your account</h2><p><strong>${escape(profile().name)}</strong><br><span class="small muted">@${escape(store.account.username)} · this account only</span></p><button class="button secondary" data-action="profiles">Account & sign-in settings</button><p class="privacy-note">Other people's accounts cannot be opened from this menu. Sign out, then use their own credentials. Browser snapshots are not encrypted; only use a trusted device. Signing out clears this account's cache and rollback, after you have exported pending changes.</p><details class="storage-details"><summary>How your data is stored ${icon('chevron-down')}</summary><p class="small muted">Private GitHub storage is maintained by the app operator; it is not end-to-end encrypted. Keep your own exports. The service sleeps when idle and may take around a minute to wake.</p></details></section>`;
 }
 function renderAccount() {
   if (!signedIn()) { renderAuth(); return; }
-  showDialog('#profile-dialog', `<div class="dialog-heading"><h2 id="profile-dialog-title">Your account</h2>${closeButton}</div><p class="dialog-copy">@${escape(store.account.username)} · cloud account<br>Only your training data is available here.</p>
-    <form id="cloud-name-form" class="cloud-form"><label class="form-label">Public display name<input id="cloud-name" name="name" maxlength="40" required value="${escape(profile().name)}"></label><button class="button primary" type="submit">Save name</button></form>
-    <details><summary>Change password</summary><form id="cloud-password-form" class="cloud-form"><label class="form-label">Current password<input name="currentPassword" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></label><label class="form-label">New password<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><p class="small muted">Signs out other devices. Your saved recovery code remains valid.</p><button class="button secondary" type="submit">Change password</button><p id="password-status" class="field-error" role="status"></p></form></details>
+  showDialog('#profile-dialog', `<div class="dialog-heading"><h2 id="profile-dialog-title">Your account</h2>${closeButton}</div><p class="dialog-copy">@${escape(store.account.username)} · your account<br>Only your training data is available here.</p>
+    <form id="cloud-name-form" class="cloud-form"><label class="form-label">Display name<input id="cloud-name" name="name" maxlength="40" required value="${escape(profile().name)}"></label><button class="button primary" type="submit">Save name</button></form>
+    <details><summary>Change password</summary><form id="cloud-password-form" class="cloud-form">${passwordField({id: 'account-current-password', name: 'currentPassword', label: 'Current password'})}${passwordField({id: 'account-new-password', label: 'New password', autocomplete: 'new-password'})}<p class="small muted">Signs out other devices. Your saved recovery code remains valid.</p><button class="button secondary" type="submit">Change password</button><p id="password-status" class="field-error" role="status"></p></form></details>
     <div class="dialog-actions"><button class="button secondary" data-action="cloud-settings">Training settings</button><button class="button secondary" data-action="cloud-logout">Sign out</button></div><p class="privacy-note">Use a private browser session on shared devices. Downloaded backups remain outside the app and must be removed separately.</p>`);
 }
 function showRecovery(code, username) {
@@ -586,7 +616,7 @@ async function showCloudConflict() {
   try {
     const latest = store.conflict || await store.latestConflict();
     const p = profile(), remote = latest.profile;
-    showDialog('#cloud-dialog', `<div class="dialog-heading"><h2 id="cloud-title">Choose which version to keep</h2>${closeButton}</div><p class="dialog-copy">No changes have been overwritten. Versions are not merged automatically. Export this tab first, then choose deliberately. A newer timestamp does not necessarily contain every workout.</p><div class="conflict-compare"><section><h3>This device</h3><p>${p.history.length} workouts · session ${p.current} · cycle ${p.cycle}</p><p class="small muted">Edited ${escape(store.localUpdatedAt ? new Date(store.localUpdatedAt).toLocaleString() : 'not recorded')}<br>Based on revision ${store.revision}</p></section><section><h3>GitHub version</h3><p>${remote.history.length} workouts · session ${remote.current} · cycle ${remote.cycle}</p><p class="small muted">Saved ${escape(new Date(latest.updatedAt).toLocaleString())}<br>Revision ${latest.revision}</p></section></div><div class="settings-buttons"><button class="button primary" data-action="cloud-conflict-export">1. Export this device’s version</button><button class="button secondary" data-action="cloud-conflict-server-export">Export GitHub version</button></div><p class="small muted">After downloading, confirm the backup is saved before continuing. Either choice replaces the entire account document, including drafts, notes and timers.</p><div class="dialog-actions"><button class="button secondary" data-action="cloud-conflict-server" ${conflictExported ? '' : 'disabled'}>2. Use GitHub version</button><button class="button danger-outline" data-action="cloud-conflict-local" ${conflictExported ? '' : 'disabled'}>2. Keep this device’s version</button></div>`);
+    showDialog('#cloud-dialog', `<div class="dialog-heading"><h2 id="cloud-title">Choose which version to keep</h2>${closeButton}</div><p class="dialog-copy">No changes have been overwritten. Versions are not merged automatically. Export this tab first, then choose deliberately. A newer timestamp does not necessarily contain every workout.</p><div class="conflict-compare"><section><h3>This device</h3><p>${p.history.length} workouts · session ${p.current} · cycle ${p.cycle}</p><p class="small muted">Edited ${escape(store.localUpdatedAt ? new Date(store.localUpdatedAt).toLocaleString() : 'not recorded')}<br>Based on revision ${store.revision}</p></section><section><h3>Saved online version</h3><p>${remote.history.length} workouts · session ${remote.current} · cycle ${remote.cycle}</p><p class="small muted">Saved ${escape(new Date(latest.updatedAt).toLocaleString())}<br>Revision ${latest.revision}</p></section></div><div class="settings-buttons"><button class="button primary" data-action="cloud-conflict-export">1. Export this device’s version</button><button class="button secondary" data-action="cloud-conflict-server-export">Export saved online version</button></div><p class="small muted">After downloading, confirm the backup is saved before continuing. Either choice replaces the entire account document, including drafts, notes and timers.</p><div class="dialog-actions"><button class="button secondary" data-action="cloud-conflict-server" ${conflictExported ? '' : 'disabled'}>2. Use saved online version</button><button class="button danger-outline" data-action="cloud-conflict-local" ${conflictExported ? '' : 'disabled'}>2. Keep this device’s version</button></div>`);
   } catch (e) { toast(e.message); }
 }
 function chooseCloudImport(imported) {
@@ -596,7 +626,7 @@ function chooseCloudImport(imported) {
     e.preventDefault(); const selected = candidates[Number($('#cloud-import-choice').value)];
     if ($('#cloud-import-choice').value === '' || !selected) return;
     $('#cloud-dialog').close();
-    confirmDialog('Replace this account with the selected profile?', `Import only ${selected.name} (${selected.history.length} workouts) into @${store.account.username}? All current cloud training data will be replaced after sync. Other profiles in the backup are excluded. A rollback of this account is saved on this device.`, 'Import this person only', () => {
+    confirmDialog('Replace this account with the selected profile?', `Import only ${selected.name} (${selected.history.length} workouts) into @${store.account.username}? All current account training data will be replaced after sync. Other profiles in the backup are excluded. A rollback of this account is saved on this device.`, 'Import this person only', () => {
       try {
         const next = clone(state); next.profiles = [{...selected, id: store.account.id}]; next.activeProfileId = store.account.id;
         store.replace(validateState(next), state); state = next; openExercises = new Set([0]); render(); void store.flush(); toast('Selected profile imported · check sync status. Other people were not uploaded.');
@@ -616,7 +646,7 @@ function handleCloudClick(button) {
   const action = button.dataset.action;
   if (!action.startsWith('cloud-')) return false;
   const run = async () => {
-    if (action.startsWith('cloud-auth-')) { authView = action.slice(11); renderAuth(); return; }
+    if (action.startsWith('cloud-auth-')) { if (authBusy) return; authView = action.slice(11); renderAuth(); return; }
     if (action === 'cloud-local-export') { exportExistingLocal(); return; }
     if (action === 'cloud-pending-export') { exportAll(); return; }
     if (action === 'cloud-reload') { location.reload(); return; }
@@ -634,14 +664,14 @@ function handleCloudClick(button) {
     if (['cloud-conflict-server', 'cloud-conflict-local'].includes(action)) {
       if (!conflictExported) return;
       const server = action.endsWith('server');
-      confirmDialog(server ? 'Use the GitHub version?' : 'Replace GitHub with this device?', 'Confirm that your device-version export was saved somewhere safe. This replaces the entire selected version, including drafts. A further remote change will cause another conflict rather than being silently overwritten.', server ? 'Backup saved · use GitHub' : 'Backup saved · keep this device', async () => {
+      confirmDialog(server ? 'Use the saved online version?' : 'Replace the online version with this device?', 'Confirm that your device-version export was saved somewhere safe. This replaces the entire selected version, including drafts. A further remote change will cause another conflict rather than being silently overwritten.', server ? 'Backup saved · use online version' : 'Backup saved · keep this device', async () => {
         try { $('#cloud-dialog').close(); await store.resolve(server ? 'server' : 'local'); render(); } catch (e) { toast(e.message); }
       }, !server); return;
     }
     if (action === 'cloud-logout') {
       if (store.dirty && !store.locked) await store.flush();
       const pending = store.dirty || store.locked || store.failed;
-      confirmDialog('Sign out of this account?', pending ? 'Some work is not confirmed saved. Download the account backup now before signing out. Signing out clears this account’s device cache and rollback; pending changes will not upload afterwards.' : 'Your saved GitHub data stays safe. This account’s device cache and rollback will be cleared. Other devices stay signed in.', pending ? 'Export backup & sign out' : 'Sign out', async () => {
+      confirmDialog('Sign out of this account?', pending ? 'Some work is not confirmed saved. Download the account backup now before signing out. Signing out clears this account’s device cache and rollback; pending changes will not upload afterwards.' : 'Your data saved online stays safe. This account’s device cache and rollback will be cleared. Other devices stay signed in.', pending ? 'Export backup & sign out' : 'Sign out', async () => {
         try {
           if (pending) exportAll();
           await store.logout(); state = emptyAccountState(); recoveryOnce = null; confirmAction = null;
@@ -663,7 +693,13 @@ document.addEventListener('submit', async event => {
   }
   if (authBusy) return;
   authBusy = true; const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
-  const originalLabel = submit.textContent; submit.textContent = 'Please wait…';
+  const originalLabel = submit.textContent; submit.textContent = form.id === 'cloud-password-form' ? 'Changing password…' : authView === 'signup' ? 'Creating account…' : authView === 'recover' ? 'Resetting password…' : 'Signing in…';
+  form.setAttribute('aria-busy', 'true');
+  const authLinks = $$('.auth-links button'); authLinks.forEach(button => { button.disabled = true; });
+  const progress = form.querySelector('#auth-progress');
+  const requestDelay = setTimeout(() => {
+    if (progress) { progress.hidden = false; progress.textContent = 'Still waiting for a response. The service may be waking up. Keep this page open; if the request fails, you can try again.'; }
+  }, 8000);
   const errorEl = form.querySelector('[role="alert"], [role="status"]'); if (errorEl) errorEl.textContent = '';
   try {
     const values = Object.fromEntries(new FormData(form));
@@ -676,6 +712,6 @@ document.addEventListener('submit', async event => {
     if (authView === 'recover') { authView = 'login'; renderAuth(); showRecovery(result.recoveryCode, values.username); }
     else { await store.adopt(result); render(); if (result.recoveryCode) showRecovery(result.recoveryCode, values.username); }
   } catch (e) { if (errorEl) errorEl.textContent = e.message; else toast(e.message); }
-  finally { authBusy = false; submit.disabled = false; submit.textContent = originalLabel; }
+  finally { clearTimeout(requestDelay); authBusy = false; form.removeAttribute('aria-busy'); submit.disabled = false; submit.textContent = originalLabel; authLinks.forEach(button => { button.disabled = false; }); if (progress) progress.hidden = true; }
 });
 $('#cloud-dialog').addEventListener('cancel', event => { if (recoveryOnce) event.preventDefault(); });

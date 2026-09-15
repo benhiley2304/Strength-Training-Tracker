@@ -1,5 +1,7 @@
 // One local stroke-icon set for the app shell and dynamically rendered controls.
 const paths = {
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  'eye-off': '<path d="m3 3 18 18M10.5 5.1A12 12 0 0 1 12 5c6.5 0 10 7 10 7a19 19 0 0 1-3.1 3.9M6.1 6.1A21 21 0 0 0 2 12s3.5 7 10 7a12 12 0 0 0 5.9-1.9M10 10a2.8 2.8 0 0 0 4 4"/>',
   dumbbell: '<path d="M3 9v6m4-9v12m10-12v12m4-9v6M7 12h10"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   chart: '<path d="M4 4v16h16M9 15v-4m5 4V7m5 8V4"/>',
@@ -24,4 +26,9 @@ export function icon(name) {
 
 export function populateIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach(el => { el.innerHTML = icon(el.dataset.icon); });
+}
+
+// The same five-plate mark as the local favicon, inheriting the current appearance.
+export function brandMark(size = 36) {
+  return `<svg class="brand-mark" viewBox="0 0 64 64" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6" y="20" width="7" height="24" rx="3.5"/><rect x="16" y="13" width="8" height="38" rx="4"/><rect x="40" y="13" width="8" height="38" rx="4"/><rect x="51" y="20" width="7" height="24" rx="3.5"/><rect class="brand-bar" x="24" y="28" width="16" height="8" rx="4"/></svg>`;
 }
