@@ -1,19 +1,17 @@
 /* One coherent release. Bump VERSION whenever any app-shell asset changes. */
-const VERSION = "strength-training-tracker-v6-brand-3";
-const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./icons.js", "./cloud.js", "./cloud-config.js", "./model.js", "./programme.js", "./manrope-latin.woff2", "./manifest.webmanifest", "./icon.svg", "./icon-maskable.svg"];
+const VERSION = "strength-training-tracker-v6-sync-4";
+const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./icons.js", "./cloud.js", "./sync-merge.js", "./cloud-config.js", "./model.js", "./programme.js", "./manrope-latin.woff2", "./manifest.webmanifest", "./icon.svg", "./icon-maskable.svg"];
 const URLS = FILES.map(path => new URL(path, self.registration.scope).href);
 const KNOWN = new Set(URLS);
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(VERSION).then(async cache => {
     // addAll is atomic: a missing asset prevents the release from installing.
-    const config = await fetch(new URL('./api/config', self.registration.scope), {cache: 'no-store'});
-    const cloud = config.ok && config.headers.get('content-type')?.includes('application/json') && (await config.json()).cloud === true;
-    if (!config.ok && config.status !== 404) throw new Error('Cannot determine release mode');
-    // Cloud account/auth HTML is never stored. The public JS/CSS shell contains no account data.
-    const files = cloud ? URLS.filter(url => !url.endsWith('/') && !url.endsWith('/index.html')) : URLS;
-    await cache.addAll(files.map(url => new Request(url, {cache: "reload"})));
+    // These allowlisted assets, including index.html, are public and account-free.
+    // No config/auth probe: a sleeping API must not delay a returning branded shell.
+    // Omit credentials; API responses and cookies never enter this cache.
+    await cache.addAll(URLS.map(url => new Request(url, {cache: "reload", credentials: "omit"})));
   }));
-  // No skipWaiting here. Open sessions opt in to updates after saving.
+  // No skipWaiting here. Open sessions opt in after a durable device snapshot/recovery journal.
 });
 self.addEventListener("message", event => {
   if (event.data?.type === "ACTIVATE_UPDATE") self.skipWaiting();

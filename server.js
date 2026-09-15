@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {GitStorage, DiskStorage} from './server/storage.js';
 import {hash, normalizeUsername, validUsername, validPassword, passwordHash, checkPassword, equal, recoveryCode, recoveryHash, signSession, parseSession, authorized, RateLimiter, SESSION_AGE} from './server/auth.js';
 import {APP, newProfile, validateState} from './model.js';
+import {equalData} from './sync-merge.js';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_ERROR = 'Unable to complete this request. Check your details and try again.';
 export class ApiError extends Error {
@@ -32,7 +33,7 @@ async function body(req, max) {
 }
 const assets = new Map([
   ['/', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']],
-  ...['app.js', 'cloud.js', 'cloud-config.js', 'model.js', 'programme.js', 'icons.js', 'sw.js'].map(x => [`/${x}`, [x, 'text/javascript']]),
+  ...['app.js', 'cloud.js', 'sync-merge.js', 'cloud-config.js', 'model.js', 'programme.js', 'icons.js', 'sw.js'].map(x => [`/${x}`, [x, 'text/javascript']]),
   ['/styles.css', ['styles.css', 'text/css']], ['/manrope-latin.woff2', ['manrope-latin.woff2', 'font/woff2']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
   ...['icon.svg', 'icon-maskable.svg'].map(x => [`/${x}`, [x, 'image/svg+xml']])
@@ -139,7 +140,10 @@ export function createApp({env = process.env, storage, authLimiter = new RateLim
         if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER || (match && data.revision !== undefined && data.revision !== revision)) fail(400, 'Invalid revision.');
         const profile = validateProfile(data.profile, session.id, data.theme);
         const result = await signedIn(a => {
-          if (a.revision !== revision) fail(409, 'Another device changed this account. Choose which version to keep.', {latest: view(a)});
+          // Authenticated, validated and read from the refreshed Git remote. Recover a lost
+          // acknowledgement even with stale If-Match, without a commit or revision bump.
+          if (equalData(a.profile, profile) && a.theme === data.theme) return {result: view(a)};
+          if (a.revision !== revision) fail(409, 'Newer online changes are ready to reconcile.', {latest: view(a)});
           a.profile = profile; a.theme = data.theme; a.revision++; a.updatedAt = new Date().toISOString();
           return {account: a, result: view(a)};
         });

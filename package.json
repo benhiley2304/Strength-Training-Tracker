@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check app.js && node --check model.js && node --check programme.js && node --check sw.js && node --check cloud.js && node --check server.js && node --check server/auth.js && node --check server/storage.js",
+    "check": "node --check app.js && node --check model.js && node --check programme.js && node --check sw.js && node --check sync-merge.js && node --check cloud.js && node --check server.js && node --check server/auth.js && node --check server/storage.js",
     "start": "node server.js"
   },
   "engines": {

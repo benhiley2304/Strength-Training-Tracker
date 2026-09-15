@@ -23,7 +23,7 @@ test('dirty changes debounce into a revision-checked snapshot and become saved o
   const next = clone(f.state()); next.profiles[0].bw = 80;
   assert.equal(f.store.save(next), true); assert.equal(f.store.dirty, true);
   const saving = f.store.flush(); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(f.store.dirty, true); assert.match(f.store.message, /Pending/); assert.equal(received.options.headers['If-Match'], '"0"');
+  assert.equal(f.store.dirty, true); assert.match(f.store.message, /Saving your latest changes/); assert.equal(received.options.headers['If-Match'], '"0"');
   const result = remote(1); result.profile.bw = 80; release(result);
   assert.equal(await saving, true); assert.equal(f.store.dirty, false); assert.equal(f.store.revision, 1); assert.match(f.store.message, /All changes saved/);
 });
@@ -42,13 +42,14 @@ test('offline/storage service failure never resets account progress or marks it 
   assert.equal(await f.store.flush(), false); assert.equal(f.store.dirty, true); assert.equal(f.store.state.profiles[0].bw, 85);
   assert.equal(JSON.parse(f.storage.getItem(cacheKey(id))).state.profiles[0].bw, 85); assert.match(f.store.message, /Offline/);
 });
-test('409 preserves local work, exposes comparison, and never automatically retries an overwrite', async t => {
+test('409 races reconcile automatically with bounded retries and no blocking modal', async t => {
   let calls = 0; const f = await fixture(t, async () => { calls++; throw Object.assign(new Error('conflict'), {status: 409, latest: remote(2, 'Phone')}); });
+  f.store.wait = async () => {};
   const next = clone(f.state()); next.profiles[0].name = 'Desktop'; f.store.save(next); await f.store.flush();
-  assert.equal(f.store.locked, true); assert.equal(f.store.state.profiles[0].name, 'Desktop'); assert.equal(f.conflicts[0].profile.name, 'Phone');
-  await f.store.flush(); await f.store.refresh(); assert.equal(calls, 1);
+  assert.equal(f.store.locked, false); assert.equal(f.store.state.profiles[0].name, 'Desktop'); assert.equal(f.conflicts.length, 0);
+  assert.equal(calls, 3); assert.equal(f.store.dirty, true); assert.equal(f.store.failed, true);
 });
-test('explicit keep-local resolution uses the latest revision and further races still conflict', async t => {
+test('routine 409 replays local changed fields against the latest revision', async t => {
   const calls = []; let conflict = true;
   const f = await fixture(t, async (route, options) => {
     calls.push(options && JSON.parse(options.body));
@@ -56,7 +57,7 @@ test('explicit keep-local resolution uses the latest revision and further races 
     const result = remote(4); result.profile = calls.at(-1).profile; return result;
   });
   const next = clone(f.state()); next.profiles[0].name = 'Desktop'; f.store.save(next); await f.store.flush();
-  await f.store.resolve('local'); assert.equal(calls[1].revision, 3); assert.equal(calls[1].profile.name, 'Desktop'); assert.equal(f.store.revision, 4);
+  assert.equal(f.store.locked, false); assert.equal(calls[1].revision, 3); assert.equal(calls[1].profile.name, 'Desktop'); assert.equal(f.store.revision, 4);
 });
 test('explicit server reload changes only this account and does not write to GitHub', async t => {
   let writes = 0; const f = await fixture(t, async (route, options) => { if (options?.method === 'PUT') writes++; return remote(4, 'Phone'); });
@@ -64,32 +65,32 @@ test('explicit server reload changes only this account and does not write to Git
   await f.store.resolve('server'); assert.equal(f.state().profiles[0].name, 'Phone'); assert.equal(writes, 0); assert.equal(f.store.dirty, false);
 });
 test('clean refresh is read-only, and a response arriving after a user edit cannot overwrite it', async t => {
-  let release; const calls = []; const f = await fixture(t, async (...args) => { calls.push(args); return new Promise(r => { release = r; }); });
+  let release; const calls = []; const f = await fixture(t, async (...args) => { calls.push(args); if (args[1]?.method === 'PUT') { const r = remote(2); r.profile = JSON.parse(args[1].body).profile; return r; } return new Promise(r => { release = r; }); });
   const refresh = f.store.refresh(); const next = clone(f.state()); next.profiles[0].name = 'Desktop'; f.store.save(next); release(remote(1, 'Phone')); await refresh;
   assert.equal(f.store.state.profiles[0].name, 'Desktop'); assert.equal(f.store.dirty, true); assert.equal(calls[0][0], '/api/account'); assert.equal(calls[0][1], undefined);
-  await f.store.refresh(); assert.equal(calls.length, 1);
+  await f.store.refresh(); assert.equal(calls.length, 2); assert.equal(f.store.dirty, false);
 });
 test('blocked local storage warns without crashing or claiming a device backup exists', async t => {
   const storage = {getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }};
-  const f = await fixture(t, async () => remote(1), storage);
+  const f = await fixture(t, async (route, options) => { const r = remote(1); r.profile = JSON.parse(options.body).profile; return r; }, storage);
   const next = clone(f.state()); next.profiles[0].bw = 80;
   assert.equal(f.store.save(next), false); assert.equal(f.store.cacheFailed, true); assert.match(f.store.message, /backup unavailable/);
   await f.store.flush(); assert.match(f.store.message, /All changes saved · device backup unavailable/);
 });
-test('pending per-account cache requires explicit recovery after the first remote pull', async t => {
+test('pending V1 account cache replays automatically after the first remote pull', async t => {
   const storage = memory(), next = documentState(remote()); next.profiles[0].bw = 93;
   storage.setItem(cacheKey(id), JSON.stringify({account: {id, username: 'alice'}, state: next, revision: 0, dirty: true, localUpdatedAt: new Date().toISOString()}));
-  let calls = 0; const f = await fixture(t, async () => { calls++; return remote(1); }, storage);
-  assert.equal(f.store.state.profiles[0].bw, 93); assert.equal(f.store.locked, true); assert.equal(f.conflicts.length, 1);
-  await f.store.flush(); assert.equal(calls, 0);
+  let calls = 0; const f = await fixture(t, async (route, options) => { calls++; const r = remote(1); r.profile = JSON.parse(options.body).profile; return r; }, storage);
+  assert.equal(f.store.state.profiles[0].bw, 93); assert.equal(f.store.locked, false); assert.equal(f.conflicts.length, 0);
+  await f.store.flush(); assert.equal(calls, 1); assert.equal(f.store.dirty, false);
 });
-test('cross-tab cache changes pause writes and keep both versions exportable', async t => {
+test('cross-tab cache changes merge safely and keep both versions in recovery', async t => {
   const f = await fixture(t, async () => remote(1));
   const other = {...JSON.parse(f.storage.getItem(cacheKey(id))), state: documentState(remote(1, 'Other tab'))};
   f.storage.setItem(cacheKey(id), JSON.stringify(other));
   const next = clone(f.state()); next.profiles[0].name = 'This tab';
-  assert.equal(f.store.save(next), false); assert.equal(f.store.locked, true);
-  assert.equal(f.store.state.profiles[0].name, 'This tab'); assert.equal(JSON.parse(f.storage.getItem(cacheKey(id))).state.profiles[0].name, 'Other tab');
+  assert.equal(f.store.save(next), true); assert.equal(f.store.locked, false);
+  assert.equal(f.store.state.profiles[0].name, 'This tab'); assert.equal(JSON.parse(f.storage.getItem(cacheKey(id))).state.profiles[0].name, 'This tab');
 });
 test('logout clears active account memory/cache but never another account or local profiles', async t => {
   const f = await fixture(t, async () => ({ok: true})); f.storage.setItem(cacheKey('b'.repeat(64)), 'other-user-cache'); f.storage.setItem(KEY, 'local-profiles');
@@ -108,7 +109,7 @@ test('static non-JSON API fallbacks stay local, but known cloud outages never do
   globalThis.localStorage = memory(); globalThis.fetch = async () => new Response('Not found', {status: 404, headers: {'Content-Type': 'text/html'}});
   assert.equal(await detectCloud(), 'local');
   globalThis.fetch = async () => new Response('<html>static rewrite</html>', {headers: {'Content-Type': 'text/html'}}); assert.equal(await detectCloud(), 'local');
-  globalThis.localStorage.setItem(CLOUD_MARKER, 'true'); assert.equal(await detectCloud(), 'unavailable');
-  globalThis.fetch = async () => { throw new Error('offline'); }; assert.equal(await detectCloud(), 'unavailable');
-  globalThis.localStorage.removeItem(CLOUD_MARKER); globalThis.localStorage.setItem(KEY, JSON.stringify(freshState())); assert.equal(await detectCloud(), 'local');
+  globalThis.localStorage.setItem(CLOUD_MARKER, 'true'); assert.equal(await detectCloud(), 'cloud');
+  globalThis.fetch = async () => { throw new Error('offline'); }; assert.equal(await detectCloud(), 'cloud');
+  globalThis.localStorage.removeItem(CLOUD_MARKER); globalThis.localStorage.setItem(KEY, JSON.stringify(freshState())); assert.equal(await detectCloud({wait: async () => {}}), 'local');
 });

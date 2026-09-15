@@ -168,3 +168,17 @@ test('production refuses test storage and weak or incomplete configuration', () 
   assert.throws(() => createApp({env: {...env, SESSION_SECRET: 'weak'}}));
   assert.throws(() => createApp({env: {...env, APP_ORIGIN: 'https://tracker.test/'}}));
 });
+
+test('equal authenticated PUT is idempotent with stale If-Match and key order differences; lost ack never makes an extra write', async t => {
+  const {call, signup, storage} = await fixture(t); const a = await signup(); let writes = 0;
+  const originalWrite = storage.write; storage.write = async (...args) => { writes++; return originalWrite(...args); };
+  const profile = {...a.data.profile, name: 'Pending edit', bw: 80};
+  const put = (body, cookie = a.cookie, match = '"0"') => call('/api/profile', {method: 'PUT', cookie, body, headers: {'If-Match': match}});
+  const first = await put({profile, theme: 'dark', revision: 0}); assert.equal(first.status, 200); assert.equal(first.data.revision, 1); assert.equal(writes, 1);
+  const retry = await put({profile: Object.fromEntries(Object.entries(profile).reverse()), theme: 'dark', revision: 0});
+  assert.equal(retry.status, 200); assert.equal(retry.data.revision, 1); assert.equal(retry.data.updatedAt, first.data.updatedAt); assert.equal(writes, 1);
+  assert.equal((await put({profile, theme: 'dark', revision: 1}, a.cookie, '"1"')).data.revision, 1); assert.equal(writes, 1);
+  assert.equal((await put({profile, theme: 'dark', revision: 0}, '')).status, 401);
+  await call('/api/auth/logout', {method: 'POST', cookie: a.cookie, body: {}});
+  assert.equal((await put({profile, theme: 'dark', revision: 0})).status, 401);
+});

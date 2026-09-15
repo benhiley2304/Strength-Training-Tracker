@@ -43,6 +43,7 @@ let view = titles[location.hash.slice(1)] ? location.hash.slice(1) : "train";
 let openExercises = new Set([0]);
 let toastTimeout;
 let waitingWorker = null;
+let updatePrepared = false;
 let importBusy = false;
 let finishBusy = false;
 let confirmAction = null;
@@ -306,7 +307,7 @@ document.addEventListener("click", event => {
   }
   if (isCloud && handleCloudClick(button)) return;
   if (!isCloud && action === "launch-cloud") { launchCloud(); return; }
-  if (isCloud && !signedIn() && !["close-dialog", "confirm"].includes(action)) return;
+  if (isCloud && !signedIn() && !["close-dialog", "confirm", "update"].includes(action)) return;
   const p = profile();
   if (action === "close-dialog") { button.closest("dialog").close(); return; }
   if (action === "confirm") {
@@ -368,7 +369,7 @@ document.addEventListener("click", event => {
   if (action === "export") { exportAll(); return; }
   if (action === "import") { $("#import-file").click(); return; }
   if (action === "legacy-export") { download(p.legacy.sources, filename("strength-tracker-legacy-archive")); return; }
-  if (action === "recovery-export") { download({previousRaw: store.raw, currentTab: state}, filename("strength-tracker-recovery")); return; }
+  if (action === "recovery-export") { download(isCloud ? store.recovery() : {previousRaw: store.raw, currentTab: state}, filename("strength-tracker-recovery")); return; }
   if (action === "rollback-export") {
     try {
       const backup = store.rollback();
@@ -391,8 +392,8 @@ document.addEventListener("click", event => {
     }, true); return;
   }
   if (action === "update" && waitingWorker) {
-    if (isCloud && (store.dirty || store.inflight)) { toast("Wait for sync, or export pending work before reloading."); return; }
-    if (!persist()) { toast("Export your work before updating; local saving is unavailable."); return; }
+    if (isCloud ? !store.prepareUpdate() : !persist()) { toast("Export your work before updating; local saving is unavailable."); return; }
+    updatePrepared = true;
     waitingWorker.postMessage({type: "ACTIVATE_UPDATE"}); return;
   }
 });
@@ -488,7 +489,7 @@ window.addEventListener("storage", e => {
   }
 });
 window.addEventListener("beforeunload", event => {
-  if (store.failed || store.locked || (isCloud && store.dirty)) { event.preventDefault(); event.returnValue = ""; }
+  if (!updatePrepared && (store.failed || store.locked || (isCloud && store.dirty))) { event.preventDefault(); event.returnValue = ""; }
 });
 document.addEventListener("visibilitychange", tickClocks);
 matchMedia("(prefers-color-scheme:dark)").addEventListener?.("change", theme);
@@ -499,10 +500,13 @@ if ("serviceWorker" in navigator) {
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
-    if (store.failed || store.locked || (isCloud && store.dirty)) {
-      store.problem("An app update is ready, but this tab has unsaved or conflicting work. Export a backup before reloading.");
+    // An update activated by another tab cannot discard this tab's pending work.
+    // Journal immediately before reload as edits/acknowledgements may follow the click.
+    if (isCloud ? !store.prepareUpdate() : (store.failed || store.locked)) {
+      store.problem("An app update is ready. Export your work before reloading; device recovery is unavailable.");
       return;
     }
+    updatePrepared = true;
     refreshing = true;
     location.reload();
   });
@@ -528,11 +532,10 @@ if (isCloud) {
   if ($("#boot-copy")) $("#boot-copy").textContent = "Checking your account. Your local profiles stay separate.";
   if (mode === "cloud") await store.boot();
   else store.status("Connection unavailable · retry when online. No data has been reset.");
-  window.addEventListener("focus", () => void store.refresh());
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void store.refresh(); });
-  window.addEventListener("online", () => { if (store.dirty) void store.flush(); else void store.refresh(); });
-  window.addEventListener("offline", () => { if (signedIn()) store.status("Offline · changes stay on this device until sync succeeds"); });
-  setInterval(() => { if (document.visibilityState === "visible") void store.refresh(); }, 45000);
+  window.addEventListener("focus", () => void store.reconnect());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void store.reconnect(); else store.pause(); });
+  window.addEventListener("online", () => void store.reconnect());
+  window.addEventListener("offline", () => { store.pause(); if (signedIn()) store.status("Offline · changes stay on this device until sync succeeds"); });
 }
 clearTimeout(bootDelay);
 document.body.classList.remove('is-loading', 'loading-delayed');
@@ -649,12 +652,12 @@ function handleCloudClick(button) {
     if (action.startsWith('cloud-auth-')) { if (authBusy) return; authView = action.slice(11); renderAuth(); return; }
     if (action === 'cloud-local-export') { exportExistingLocal(); return; }
     if (action === 'cloud-pending-export') { exportAll(); return; }
-    if (action === 'cloud-reload') { location.reload(); return; }
+    if (action === 'cloud-reload') { if (store.account) await store.reconnect(); else { await store.boot(); render(); } return; }
     if (action === 'cloud-recovery-download') { if (recoveryOnce) download({username: recoveryUsername, recoveryCode: recoveryOnce, warning: 'Keep private. This code can reset your account password.'}, filename('strength-tracker-PRIVATE-recovery-code')); return; }
     if (action === 'cloud-recovery-done') { recoveryOnce = null; recoveryUsername = ''; $('#cloud-dialog').close(); $('#cloud-dialog').innerHTML = ''; return; }
     if (!signedIn()) return;
     if (action === 'cloud-settings') { $('#profile-dialog').close(); location.hash = 'settings'; return; }
-    if (action === 'cloud-retry') { if (store.dirty) await store.flush(); else await store.refresh(); return; }
+    if (action === 'cloud-retry') { await store.reconnect(); return; }
     if (action === 'cloud-conflict') { conflictExported = false; await showCloudConflict(); return; }
     if (action === 'cloud-conflict-export') { exportAll(); conflictExported = true; await showCloudConflict(); return; }
     if (action === 'cloud-conflict-server-export') {

@@ -86,7 +86,7 @@ test('password visibility is an accessible, non-submit control that preserves in
 test('delayed and failed connections provide retry without changing detection or claiming saved work', () => {
   assert.match(app, /const bootDelay = setTimeout\([\s\S]*?8000\)/);
   assert.match(app, /clearTimeout\(bootDelay\)/);
-  assert.match(read('cloud.js'), /AbortSignal.timeout\(12000\)/);
+  assert.match(read('cloud.js'), /attempt < 3/);
   assert.match(read('cloud.js'), /AbortSignal.timeout\(90000\)/);
   assert.match(css, /tracker-breathe 1\.8s ease-in-out 4/);
   assert.match(css, /prefers-reduced-motion: reduce/);
