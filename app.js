@@ -709,8 +709,8 @@ document.addEventListener('submit', async event => {
     }
     const result = await api(`/api/auth/${authView}`, {method: 'POST', body: JSON.stringify(values)});
     form.reset();
-    if (authView === 'recover') { authView = 'login'; renderAuth(); showRecovery(result.recoveryCode, values.username); }
-    else { await store.adopt(result); render(); if (result.recoveryCode) showRecovery(result.recoveryCode, values.username); }
+    if (authView === 'recover') { authView = 'login'; renderAuth(); window.scrollTo({top: 0, behavior: 'instant'}); showRecovery(result.recoveryCode, values.username); }
+    else { await store.adopt(result); render(); window.scrollTo({top: 0, behavior: 'instant'}); if (result.recoveryCode) showRecovery(result.recoveryCode, values.username); }
   } catch (e) { if (errorEl) errorEl.textContent = e.message; else toast(e.message); }
   finally { clearTimeout(requestDelay); authBusy = false; form.removeAttribute('aria-busy'); submit.disabled = false; submit.textContent = originalLabel; authLinks.forEach(button => { button.disabled = false; }); if (progress) progress.hidden = true; }
 });
