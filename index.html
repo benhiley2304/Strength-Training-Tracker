@@ -15,27 +15,27 @@
   <a class="skip" href="#main">Skip to workout</a>
   <aside class="sidebar" aria-label="App sidebar">
     <a class="brand" href="#train" aria-label="Strength Tracker home">
-      <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true"><path d="M5 9v14M10 5v22M22 5v22M27 9v14M10 16h12" stroke="currentColor" stroke-width="3"/></svg>
-      <span>STRENGTH<span class="brand-sub">TRAINING LOG</span></span>
+      <span class="brand-icon" data-icon="dumbbell"></span>
+      <span>STRENGTH<span class="brand-sub">Training log</span></span>
     </a>
-    <div class="sidebar-label">YOUR TRAINING SPACE</div>
+    <div class="sidebar-label">Workspace</div>
     <nav id="navigation" class="navigation" aria-label="Main navigation">
-      <a href="#train" data-view="train" aria-current="page"><span class="nav-symbol" aria-hidden="true">↗</span><span>Train</span></a>
-      <a href="#programme" data-view="programme"><span class="nav-symbol" aria-hidden="true">▤</span><span>Programme</span></a>
-      <a href="#progress" data-view="progress"><span class="nav-symbol" aria-hidden="true">▥</span><span>Progress</span></a>
-      <a href="#settings" data-view="settings"><span class="nav-symbol" aria-hidden="true">☷</span><span>Settings</span></a>
+      <a href="#train" data-view="train" aria-current="page"><span class="nav-symbol" data-icon="dumbbell"></span><span>Train</span></a>
+      <a href="#programme" data-view="programme"><span class="nav-symbol" data-icon="grid"></span><span>Programme</span></a>
+      <a href="#progress" data-view="progress"><span class="nav-symbol" data-icon="chart"></span><span>Progress</span></a>
+      <a href="#settings" data-view="settings"><span class="nav-symbol" data-icon="sliders"></span><span>Settings</span></a>
     </nav>
-    <div class="sidebar-bottom"><span class="local-indicator"></span> LOCAL BY DESIGN<p>No account. No cloud.<br>Your training, on this device.</p><button class="sidebar-export" data-action="export">Export a backup ↗</button></div>
+    <div class="sidebar-bottom">Stored on this device<p>No account. No cloud.<br>Keep a backup of your training.</p><button class="sidebar-export" data-action="export">Export a backup <span data-icon="download"></span></button></div>
   </aside>
   <div class="app-shell">
     <header class="topbar">
-      <div class="topbar-location"><span class="desktop-only">TRAINING LOG</span><span class="mobile-brand">STRENGTH</span><span class="topbar-divider">/</span><span id="view-label">Train</span></div>
-      <div class="topbar-actions"><button id="theme-toggle" class="icon-button" data-action="theme" aria-label="Switch to dark appearance" title="Change appearance">◐</button><button id="profile-button" data-action="profiles" class="profile-button" aria-haspopup="dialog"><span id="profile-avatar" class="avatar">BH</span><span><span id="profile-name">Ben Hiley</span><small>Local profile</small></span><span class="profile-chevron" aria-hidden="true">⌄</span></button></div>
+      <div class="topbar-location"><span class="desktop-only">Training log</span><span class="mobile-brand">STRENGTH</span><span class="topbar-divider">/</span><span id="view-label">Train</span></div>
+      <div class="topbar-actions"><button id="theme-toggle" class="icon-button" data-action="theme" aria-label="Switch to dark appearance" title="Change appearance" data-icon="moon"></button><button id="profile-button" data-action="profiles" class="profile-button" aria-haspopup="dialog"><span id="profile-avatar" class="avatar">BH</span><span><span id="profile-name">Ben Hiley</span><small>Local profile</small></span><span class="profile-chevron" data-icon="chevron-down"></span></button></div>
     </header>
     <div id="storage-error" class="storage-warning" role="alert" hidden></div>
     <div id="update-banner" class="update-banner" hidden><span>A new version is ready. Your saved data stays here.</span><button data-action="update">Update & reload</button></div>
     <main id="main" tabindex="-1"></main>
-    <footer class="app-footer"><span id="save-status">Saved on this device</span><span>12 sessions. One stronger you.</span></footer>
+    <footer class="app-footer"><span id="save-status">Saved on this device</span></footer>
   </div>
   <section id="rest-dock" class="rest-dock" aria-label="Rest timer" hidden></section>
   <dialog id="profile-dialog" aria-labelledby="profile-dialog-title"></dialog>
