@@ -1,16 +1,48 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#090b0f"><meta name="description" content="A private, local-first 12-session strength training tracker.">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Strength Tracker">
-<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="pro.css">
-<title>Strength Training Tracker</title>
-</head><body>
-<a class="skip" href="#main">Skip to workout</a>
-<header class="top"><div class="brand"><span class="logo">ST</span><span>Strength Training Tracker</span></div><nav aria-label="Main"><button class="nav on" data-view="train">Train</button><button class="nav" data-view="plan">Plan</button><button class="nav" data-view="progress">Progress</button></nav><button class="icon" id="theme" aria-label="Change theme">◐</button></header>
-<main id="main" class="shell">
-<section id="train" class="view on"><div id="rail" class="rail" aria-label="Session rotation"></div><article class="card hero"><div><p class="eyebrow" id="position"></p><h1 id="title"></h1><p class="muted" id="focus"></p><div class="meta"><span id="level" class="badge"></span><span id="summary" class="muted"></span></div></div><div class="heroActions"><button class="icon" id="prev" aria-label="Previous session">←</button><div class="ring"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18"/><circle id="ring" class="value" cx="22" cy="22" r="18"/></svg><b id="percent">0%</b></div><button class="icon" id="next" aria-label="Next session">→</button></div></article><div class="layout"><div id="exercises" class="exerciseList"></div><aside><article class="card panel"><h2>Session notes</h2><textarea id="notes" placeholder="Readiness, cues, joints, bar speed…"></textarea></article><article class="card panel" id="conditioningPanel"><h2>Conditioning</h2><div id="conditioning" class="choices"></div></article><article class="card panel"><h2>Training cue</h2><p class="muted" id="cue"></p></article></aside></div><div class="actions"><button class="primary" id="save">Finish & save workout</button><button class="secondary export">Export backup</button></div></section>
-<section id="plan" class="view"><div class="heading"><div><p class="eyebrow">Your programme</p><h1>12-session rotation</h1><p class="muted">Upper and Lower A/B sessions across heavy, medium and light exposures.</p></div><button class="secondary" id="reset">Reset cycle progress</button></div><div id="planGrid" class="planGrid"></div></section>
-<section id="progress" class="view"><div class="heading"><div><p class="eyebrow">Performance intelligence</p><h1>Progress</h1><p class="muted">Training load, consistency and strength trends — private to this device.</p></div><div class="tools"><label>Bodyweight <input id="bw" type="number" step="0.1" inputmode="decimal"> kg</label><button class="secondary export">Export JSON</button><label class="secondary" for="import">Import JSON</label><input id="import" type="file" accept="application/json" hidden></div></div><div id="stats" class="stats"></div><article class="card panel"><div class="chartHead"><div><h2>Estimated 1RM</h2><p class="muted">Best set from each saved workout.</p></div><select id="lift" aria-label="Select lift"></select></div><div id="chart" class="chart"></div></article><article class="card panel"><h2>Recent training</h2><div id="history"></div></article></section>
-</main><nav class="bottom" aria-label="Mobile navigation"><button class="nav on" data-view="train">Train</button><button class="nav" data-view="plan">Plan</button><button class="nav" data-view="progress">Progress</button></nav><div id="toast" class="toast" role="status" aria-live="polite"></div><script src="app.js"></script><script src="pro.js"></script></body></html>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#202329">
+  <meta name="description" content="Your twelve-session strength programme. Log sets, switch local profiles and follow your progress. No account, no cloud.">
+  <title>Train · Strength Training Tracker</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to workout</a>
+  <aside class="sidebar" aria-label="App sidebar">
+    <a class="brand" href="#train" aria-label="Strength Tracker home">
+      <svg viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true"><path d="M5 9v14M10 5v22M22 5v22M27 9v14M10 16h12" stroke="currentColor" stroke-width="3"/></svg>
+      <span>STRENGTH<span class="brand-sub">TRAINING LOG</span></span>
+    </a>
+    <div class="sidebar-label">YOUR TRAINING SPACE</div>
+    <nav id="navigation" class="navigation" aria-label="Main navigation">
+      <a href="#train" data-view="train" aria-current="page"><span class="nav-symbol" aria-hidden="true">↗</span><span>Train</span></a>
+      <a href="#programme" data-view="programme"><span class="nav-symbol" aria-hidden="true">▤</span><span>Programme</span></a>
+      <a href="#progress" data-view="progress"><span class="nav-symbol" aria-hidden="true">▥</span><span>Progress</span></a>
+      <a href="#settings" data-view="settings"><span class="nav-symbol" aria-hidden="true">☷</span><span>Settings</span></a>
+    </nav>
+    <div class="sidebar-bottom"><span class="local-indicator"></span> LOCAL BY DESIGN<p>No account. No cloud.<br>Your training, on this device.</p><button class="sidebar-export" data-action="export">Export a backup ↗</button></div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-location"><span class="desktop-only">TRAINING LOG</span><span class="mobile-brand">STRENGTH</span><span class="topbar-divider">/</span><span id="view-label">Train</span></div>
+      <div class="topbar-actions"><button id="theme-toggle" class="icon-button" data-action="theme" aria-label="Switch to dark appearance" title="Change appearance">◐</button><button id="profile-button" data-action="profiles" class="profile-button" aria-haspopup="dialog"><span id="profile-avatar" class="avatar">BH</span><span><span id="profile-name">Ben Hiley</span><small>Local profile</small></span><span class="profile-chevron" aria-hidden="true">⌄</span></button></div>
+    </header>
+    <div id="storage-error" class="storage-warning" role="alert" hidden></div>
+    <div id="update-banner" class="update-banner" hidden><span>A new version is ready. Your saved data stays here.</span><button data-action="update">Update & reload</button></div>
+    <main id="main" tabindex="-1"></main>
+    <footer class="app-footer"><span id="save-status">Saved on this device</span><span>12 sessions. One stronger you.</span></footer>
+  </div>
+  <section id="rest-dock" class="rest-dock" aria-label="Rest timer" hidden></section>
+  <dialog id="profile-dialog" aria-labelledby="profile-dialog-title"></dialog>
+  <dialog id="confirm-dialog" class="compact-dialog" aria-labelledby="confirm-title"></dialog>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"></dialog>
+  <input id="import-file" type="file" accept=".json,application/json" hidden aria-label="Choose tracker backup">
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="storage-warning">JavaScript is required to run this local training log. No account is needed.</p></noscript>
+</body>
+</html>
