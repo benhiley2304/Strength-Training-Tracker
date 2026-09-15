@@ -279,3 +279,23 @@ test('legacy same-revision replay and demonstrably post-ack history/draft additi
   const same = reconcile(null, l, r, {sameRevision: true}); assert.equal(same.profiles[0].history.length, 1); assert.ok(same.profiles[0].drafts[1]);
   assert.throws(() => reconcile(null, l, r), /Older device history/);
 });
+
+test('pre-marker V1 workout-BW-only edits survive same-revision reopen and replay', async t => {
+  const storage = mem(), l = state(), r = remote(); l.profiles[0].bw = 80; r.profile.bw = 80;
+  l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].drafts[1].bwSnapshot = 82;
+  pending(storage, l, {base: null}); const f = setup(t, {storage}); await f.store.adopt(r);
+  assert.equal(f.store.locked, false); assert.equal(f.store.dirty, true); assert.equal(f.store.state.profiles[0].drafts[1].bwSnapshotEdited, true);
+  await f.store.flush(); assert.equal(f.calls.length, 1); assert.equal(f.store.dirty, false); assert.equal(JSON.parse(f.calls[0].options.body).profile.drafts[1].bwSnapshot, 82);
+});
+test('pre-marker V1 workout-BW-only edits with newer remote revision are journaled for review, never normalized away', async t => {
+  const storage = mem(), l = state(), r = remote(6); l.profiles[0].bw = 80; r.profile.bw = 80;
+  l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].drafts[1].bwSnapshot = 82;
+  pending(storage, l, {base: null}); const previousRaw = storage.getItem(cacheKey(id)), f = setup(t, {storage}); await f.store.adopt(r); await f.store.flush();
+  assert.equal(f.store.locked, true); assert.equal(f.store.dirty, true); assert.equal(f.calls.length, 0); assert.equal(storage.getItem(cacheKey(id)), previousRaw); assert.equal(f.store.state.profiles[0].drafts[1].bwSnapshot, 82);
+  const journal = JSON.parse(storage.getItem(recoveryKey(id))); assert.deepEqual(journal[0].snapshots[0].state, l); assert.deepEqual(journal[0].snapshots[1], r);
+});
+test('an already-acknowledged identical legacy BW-only draft still clears stale dirty without PUT', async t => {
+  const storage = mem(), l = state(), r = remote(6); l.profiles[0].bw = 80;
+  l.profiles[0].drafts[1] = newDraft(l.profiles[0]); l.profiles[0].drafts[1].bwSnapshot = 82; r.profile = clone(l.profiles[0]);
+  pending(storage, l, {base: null}); const f = setup(t, {storage}); await f.store.adopt(r); await f.store.flush(); assert.equal(f.store.locked, false); assert.equal(f.store.dirty, false); assert.equal(f.calls.length, 0); assert.equal(f.store.state.profiles[0].drafts[1].bwSnapshot, 82);
+});

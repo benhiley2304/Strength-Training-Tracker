@@ -51,6 +51,19 @@ export function reconcile(base, local, remote, {replacement = false, sameRevisio
   const id = remote.activeProfileId;
   remote = accountState(remote, id); local = accountState(local, id);
   if (base) base = accountState(base, id);
+  // V1 predates explicit workout-BW markers. Do this BEFORE blank-draft equality:
+  // a distinct non-null snapshot may be its only pending edit, not disposable UI.
+  if (!base) {
+    const lp = local.profiles[0], rp = remote.profiles[0];
+    for (const [key, d] of Object.entries(lp.drafts)) {
+      const acknowledged = rp.drafts[key];
+      if (!hasEffort(d) && d.bwSnapshot !== null && d.bwSnapshot !== lp.bw &&
+          !(acknowledged?.id === d.id && acknowledged.bwSnapshot === d.bwSnapshot)) {
+        if (!sameRevision) unsafe('An older workout bodyweight snapshot may contain a pending edit. Review both archived versions before replacing it.');
+        d.bwSnapshotEdited = true; // Unchanged server revision: preserve and replay it.
+      }
+    }
+  }
   if (sameState(local, remote)) return remote;
   if (replacement) {
     if (!sameRevision && (!base || !sameState(base, remote))) unsafe('An import would replace newer online changes. Review both versions first.');

@@ -1,5 +1,5 @@
 RECONNECT SYNC — MANUAL RELEASE ACCEPTANCE
-Implementation based on 52ef9d7; release asset version: strength-training-tracker-v6-sync-5.
+Implementation based on 52ef9d7; release asset version: strength-training-tracker-v6-sync-6.
 
 Safety / scope
 - Use only synthetic accounts and isolated NODE_ENV=test storage. Never use production records, tracker-secrets, user exports, live data-repository writes or force pushes.
@@ -41,3 +41,5 @@ Limits / release notes
 - Automated tests are synthetic. Real mobile/PWA update and production acceptance remain the main agent's responsibility before release.
 
 Reviewer regression additions: inherited blank BW80 draft + profile default81 cannot conflict with a different-ID remote effort; explicit workout BW edits use bwSnapshotEdited or same-ID baseline. Missing-base older histories/drafts absent after online import/reset must be journaled and held, never silently resurrected. Fresh post-ack additions and the zero-history screenshot still auto-reconcile.
+
+Final V1 migration guard: a pre-marker, non-default non-null workout-only BW snapshot is inspected BEFORE empty-draft equality. Same-revision pending snapshots gain the explicit marker and replay. A newer server revision holds the genuinely ambiguous BW-only edit for journal-backed review rather than silently clearing it. An identical already-acknowledged same-ID BW snapshot clears stale dirty without a PUT. Known-baseline profile-default changes remain non-effort.

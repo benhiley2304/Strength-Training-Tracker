@@ -7,7 +7,7 @@ function worker() {
   const handlers = {}, batches = [], handled = [], removed = [], memory = new Map(); let activations = 0;
   const cache = {addAll: async requests => { batches.push(requests); for (const request of requests) memory.set(request.url, {public: true}); }, match: async url => memory.get(url)};
   runInNewContext(sw, {URL, Request, Set, Promise, self: {registration: {scope: 'https://tracker.test/'}, location: {origin: 'https://tracker.test'}, addEventListener: (type, handler) => { handlers[type] = handler; }, skipWaiting: () => activations++},
-    caches: {open: async () => cache, keys: async () => ['unrelated-cache', 'strength-training-tracker-old', 'strength-training-tracker-v6-sync-5'], delete: async key => removed.push(key)},
+    caches: {open: async () => cache, keys: async () => ['unrelated-cache', 'strength-training-tracker-old', 'strength-training-tracker-v6-sync-6'], delete: async key => removed.push(key)},
     fetch: async request => { handled.push(request.url); return {network: true}; }
   });
   return {handlers, batches, handled, removed, activations: () => activations};
