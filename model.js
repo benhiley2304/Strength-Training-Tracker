@@ -164,6 +164,12 @@ export function validateState(data) {
       check(text(h.date, 40) && Number.isFinite(Date.parse(h.date)) && integer(h.session, 1, 12) && text(h.name, 160) && text(h.notes) && text(h.conditioning, 200), "Invalid workout details.");
       check(integer(h.cycle, 1, 100000) && stamp(h.startedAt) && (h.durationSeconds === null || num(h.durationSeconds, 0, 8640000000)) && bwValid(h.bwSnapshot) && validReady(h.readiness), "Invalid workout time, bodyweight or readiness.");
       check(typeof h.partial === "boolean" && Array.isArray(h.sets) && h.sets.length <= 1200, "Invalid workout sets.");
+      check(h.editedAt === undefined || (text(h.editedAt, 40) && Number.isFinite(Date.parse(h.editedAt))), "Invalid edit timestamp.");
+      const historySetIds = new Set();
+      for (const s of h.sets) {
+        check(s.id === undefined || (text(s.id, 220) && s.id.length && !historySetIds.has(s.id)), "Invalid or duplicate historical set ID.");
+        if (s.id) historySetIds.add(s.id);
+      }
       h.sets.forEach(s => validateSet(s, false));
     }
     check(p.legacy === null || (obj(p.legacy) && obj(p.legacy.sources) && Array.isArray(p.legacy.warnings) && p.legacy.warnings.every(s => text(s))), "Invalid legacy archive.");

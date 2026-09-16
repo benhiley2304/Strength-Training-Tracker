@@ -3,6 +3,8 @@ import {APP, KEY, Store, newProfile, newDraft, blankSet, clone, wrap, setError, 
 import {icon, populateIcons, brandMark} from "./icons.js";
 import {CloudStore, api, detectCloud} from "./cloud.js";
 import {CLOUD_URL} from "./cloud-config.js";
+import {sessionEditBuffer, newHistoryEditRow, buildEditedSession} from "./history-edit.js";
+import {equalData} from "./sync-merge.js";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -48,6 +50,7 @@ let importBusy = false;
 let finishBusy = false;
 let confirmAction = null;
 let editProfileId = null;
+let historyEditor = null;
 const profile = () => state.profiles.find(p => p.id === state.activeProfileId);
 const session = () => sessions[profile().current - 1];
 function draft() {
@@ -268,13 +271,129 @@ function renderProfiles() {
     <p class="privacy-note">On this device only. No login or automatic sync. Profiles organise data; they do not lock it away from other people using this browser.</p>`);
 }
 function historyDetail(id) {
+  historyEditor = null;
+  $("#detail-dialog").classList.remove("history-editor");
   const h = profile().history.find(x => x.id === id);
   if (!h) return;
   const groups = [...new Set(h.sets.map(s => s.exercise))];
-  showDialog("#detail-dialog", `<div class="dialog-heading"><div><p class="eyebrow">${date(h.date, true)} · ${new Date(h.date).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"})}</p><h2 id="detail-title">${escape(h.name)}</h2></div>${closeButton}</div><div class="detail-summary"><span>${h.legacy ? "Legacy · completion not recorded" : h.partial ? "Partial workout" : "Completed workout"}</span><span>${h.durationSeconds === null ? "Duration not recorded" : `${duration(h.durationSeconds)} elapsed`}</span><span>BW ${h.bwSnapshot === null ? "not recorded" : `${h.bwSnapshot} kg`}</span></div>
+  showDialog("#detail-dialog", `<div class="dialog-heading"><div><p class="eyebrow">${date(h.date, true)} · ${new Date(h.date).toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"})}</p><h2 id="detail-title">${escape(h.name)}</h2></div>${closeButton}</div><div class="history-detail-tools"><button class="button primary" data-action="edit-history" data-id="${escape(h.id)}">${icon("sliders")} Edit session</button>${h.editedAt ? `<span class="small muted">Edited ${date(h.editedAt, true)}</span>` : ""}</div><div class="detail-summary"><span>${h.legacy ? "Legacy · completion not recorded" : h.partial ? "Partial workout" : "Completed workout"}</span><span>${h.durationSeconds === null ? "Duration not recorded" : `${duration(h.durationSeconds)} elapsed`}</span><span>BW ${h.bwSnapshot === null ? "not recorded" : `${h.bwSnapshot} kg`}</span></div>
     <section class="detail-section"><h3>Check-in</h3><p>${Object.entries(h.readiness).map(([key, value]) => `${key[0].toUpperCase() + key.slice(1)}: ${value === null ? "not recorded" : `${value}/5`}`).join(" · ")}</p></section>
     <section class="detail-section"><h3>Notes</h3><p class="pre-wrap">${escape(h.notes || "No notes recorded.")}</p><p class="small muted">Conditioning: ${escape(h.conditioning || "Not recorded")}</p></section>
-    <section class="detail-section"><h3>${h.sets.length} ${h.legacy ? "recorded" : "completed"} ${h.sets.length === 1 ? "set" : "sets"}</h3>${groups.map(name => `<div class="detail-exercise"><h4>${escape(name)}</h4><table><thead><tr><th>Set</th><th>${exerciseFor(name)?.body ? "Added kg" : "kg"}</th><th>Reps</th><th>RPE</th></tr></thead><tbody>${h.sets.filter(s => s.exercise === name).map((s, i) => `<tr><td>${i + 1}</td><td>${s.mobility ? "—" : number(s.kg)}</td><td>${s.mobility ? "Activity" : s.reps}</td><td>${s.rpe ?? "—"}</td></tr>`).join("")}</tbody></table></div>`).join("")}</section><p class="small muted">External-load tonnage: ${number(volume(h))} kg · bodyweight excluded.</p><div class="dialog-actions"><button class="button secondary" data-action="close-dialog">Close</button></div>`);
+    <section class="detail-section"><h3>${h.sets.length} ${h.legacy ? "recorded" : "completed"} ${h.sets.length === 1 ? "set" : "sets"}</h3>${groups.map(name => `<div class="detail-exercise"><h4>${escape(name)}</h4><table><thead><tr><th>Set</th><th>${exerciseFor(name)?.body ? "Added kg" : "kg"}</th><th>Reps</th><th>RPE</th></tr></thead><tbody>${h.sets.filter(s => s.exercise === name).map((s, i) => `<tr><td>${i + 1}</td><td>${s.mobility ? "—" : number(s.kg)}</td><td>${s.mobility ? "Activity" : s.reps}</td><td>${s.rpe ?? "—"}</td></tr>`).join("")}</tbody></table></div>`).join("")}</section><p class="small muted">External-load tonnage: ${number(volume(h))} kg · bodyweight excluded.</p><div class="dialog-actions">${previousSessionVersion(h.id) ? `<button class="button secondary" data-action="previous-history-version" data-id="${escape(h.id)}">Download previous version</button>` : ""}<button class="button secondary" data-action="close-dialog">Close</button></div>`);
+}
+const historyEditKey = () => `strengthTrackerSessionEditsV1:${profile().id}`;
+function previousSessionVersion(id) {
+  try {
+    const entries = JSON.parse(localStorage.getItem(historyEditKey()) || "[]");
+    return Array.isArray(entries) ? entries.slice().reverse().find(x => x.before?.id === id)?.before : null;
+  } catch { return null; }
+}
+function startHistoryEdit(id) {
+  const original = profile().history.find(h => h.id === id);
+  if (!original) return;
+  const edit = sessionEditBuffer(original);
+  historyEditor = {profileId: profile().id, original: clone(original), edit, initial: JSON.stringify(edit), open: new Set(edit.groups.slice(0, 1).map(g => g.key)), detailsOpen: false};
+  $("#detail-dialog").classList.add("history-editor");
+  renderHistoryEditor();
+}
+function historyEditDirty() { return !!historyEditor && JSON.stringify(historyEditor.edit) !== historyEditor.initial; }
+function cancelHistoryEdit() {
+  if (!historyEditor) return;
+  const {original, profileId} = historyEditor;
+  const cancel = () => {
+    historyEditor = null; $("#detail-dialog").classList.remove("history-editor");
+    if (profile().id === profileId) historyDetail(original.id); else $("#detail-dialog").close();
+  };
+  if (historyEditDirty()) confirmDialog("Discard unsaved changes?", "Your saved session has not been changed.", "Discard changes", cancel, true);
+  else cancel();
+}
+function renderHistoryEditor() {
+  const ctx = historyEditor;
+  if (!ctx) return;
+  const e = ctx.edit;
+  const rowHTML = (row, gi, ri) => `<div class="history-edit-row" data-edit-group-index="${gi}" data-edit-row-index="${ri}"><span class="small muted">${ri + 1}</span>${["kg", "reps", "rpe"].map(k => `<label><span class="sr-only">${escape(e.groups[gi].name || "Exercise")} set ${ri + 1} ${k}</span><input data-history-set="${k}" type="number" inputmode="${k === "reps" ? "numeric" : "decimal"}" step="${k === "reps" ? "1" : k === "rpe" ? "0.5" : "any"}" min="${k === "rpe" ? "1" : "0"}" max="${k === "kg" ? "1500" : k === "reps" ? "200" : "10"}" value="${escape(row[k])}" ${k !== "rpe" ? "required" : ""}></label>`).join("")}<button type="button" class="icon-button" data-action="history-remove-set" data-group="${gi}" data-row="${ri}" aria-label="Remove set ${ri + 1}">${icon("x")}</button></div>`;
+  showDialog("#detail-dialog", `<div class="dialog-heading"><div><h2 id="detail-title">Edit session</h2><p class="small muted">Only this saved session changes. Your programme and active workout stay as they are.</p></div>${closeButton}</div>
+    <form id="history-edit-form">
+      <div class="history-edit-meta"><label class="form-label">Session name<input data-history-meta="name" value="${escape(e.name)}" maxlength="160" required></label><label class="form-label">Date & time<input type="datetime-local" data-history-meta="date" value="${escape(e.date)}" required></label></div>
+      <div class="section-heading history-edit-heading"><h3>Exercises & sets</h3><span class="small muted">Rename an exercise to correct its saved sets.</span></div>
+      <datalist id="history-exercise-options">${exerciseCatalogue.map(x => `<option value="${escape(x.name)}"></option>`).join("")}</datalist>
+      <div class="history-edit-exercises">${e.groups.map((g, gi) => `<details class="history-edit-exercise" data-history-group="${gi}" ${ctx.open.has(g.key) ? "open" : ""}><summary><span class="history-edit-group-title">${escape(g.name || "New exercise")}</span><span class="small muted">${g.sets.length} ${g.sets.length === 1 ? "set" : "sets"}</span><span class="chevron">${icon("chevron-down")}</span></summary><div class="history-edit-group-body">
+        <label class="form-label">Exercise<input data-history-name="${gi}" list="history-exercise-options" value="${escape(g.name)}" maxlength="160" required placeholder="Choose or type an exercise"></label>
+        <p class="small muted history-load-note">${exerciseFor(g.name)?.body ? "Use added kg only; 0 means bodyweight. Check this session’s bodyweight below for estimates." : "Check the recorded load and reps when renaming. Renaming applies to every set in this group."}</p>
+        <div class="history-edit-row history-edit-labels" aria-hidden="true"><span>Set</span><span>${exerciseFor(g.name)?.body ? "Added kg" : "kg"}</span><span>Reps</span><span>RPE</span><span></span></div>
+        ${g.sets.map((row, ri) => rowHTML(row, gi, ri)).join("")}
+        <div class="history-edit-group-actions"><button class="text-button" type="button" data-action="history-add-set" data-group="${gi}">${icon("plus")} Add set</button><button class="text-button history-remove" type="button" data-action="history-remove-group" data-group="${gi}">Remove exercise</button></div></div></details>`).join("")}</div>
+      <button type="button" class="text-button" data-action="history-add-group">${icon("plus")} Add exercise</button>
+      <label class="form-label">Session notes<textarea data-history-meta="notes" rows="3" maxlength="10000" placeholder="Notes, substitutions or corrections">${escape(e.notes)}</textarea></label>
+      <details class="history-edit-more" ${ctx.detailsOpen ? "open" : ""}><summary>Session details<span class="chevron">${icon("chevron-down")}</span></summary><div class="history-edit-meta">
+        <label class="form-label">Bodyweight for this session (kg)<input type="number" data-history-meta="bw" value="${escape(e.bw)}" min="20" max="500" step="any" inputmode="decimal" placeholder="Not recorded"></label>
+        <label class="form-label">Duration (minutes)<input type="number" data-history-meta="minutes" value="${escape(e.minutes)}" min="0" max="144000000" step="any" inputmode="decimal" placeholder="Not recorded"></label>
+        <label class="form-label">Conditioning<input data-history-meta="conditioning" value="${escape(e.conditioning)}" maxlength="200"></label>
+        ${ctx.original.legacy ? '<p class="small muted">Legacy completion remains unverified. Editing does not change that status.</p>' : `<label class="form-label">Session status<select data-history-meta="partial"><option value="false" ${e.partial === "false" ? "selected" : ""}>Completed</option><option value="true" ${e.partial === "true" ? "selected" : ""}>Partial</option></select></label>`}
+        ${["energy", "sleep", "joints"].map(k => `<label class="form-label">${k[0].toUpperCase() + k.slice(1)}<select data-history-ready="${k}"><option value="">Not recorded</option>${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${e.readiness[k] === String(n) ? "selected" : ""}>${n} / 5</option>`).join("")}</select></label>`).join("")}
+      </div></details>
+      <p id="history-edit-error" class="field-error" role="alert"></p>
+      <div class="history-edit-footer"><span id="history-edit-status" class="small muted">${historyEditDirty() ? "Unsaved changes · a previous version is kept on save." : "No changes yet. Your saved session is untouched."}</span><div><button class="button secondary" type="button" data-action="history-edit-cancel">Cancel</button><button class="button primary" type="submit" ${historyEditDirty() ? "" : "disabled"}>Save changes</button></div></div>
+    </form>`);
+  $("#history-edit-form").addEventListener("input", captureHistoryEdit);
+  $("#history-edit-form").addEventListener("change", captureHistoryEdit);
+  $("#history-edit-form").addEventListener("invalid", event => {
+    event.target.closest("details")?.setAttribute("open", "");
+  }, true);
+  $$("#history-edit-form [data-history-group]").forEach(el => el.addEventListener("toggle", () => {
+    const group = ctx.edit.groups[+el.dataset.historyGroup];
+    if (group) el.open ? ctx.open.add(group.key) : ctx.open.delete(group.key);
+  }));
+  $(".history-edit-more").addEventListener("toggle", event => { ctx.detailsOpen = event.currentTarget.open; });
+  $("#history-edit-form").addEventListener("submit", saveHistoryEdit);
+}
+function captureHistoryEdit(event) {
+  if (!historyEditor) return;
+  const target = event.target, e = historyEditor.edit;
+  if (target.dataset.historyMeta) e[target.dataset.historyMeta] = target.value;
+  if (target.dataset.historyReady) e.readiness[target.dataset.historyReady] = target.value;
+  if (target.dataset.historyName !== undefined) {
+    const group = e.groups[+target.dataset.historyName]; group.name = target.value;
+    target.closest("details").querySelector(".history-edit-group-title").textContent = target.value || "New exercise";
+    target.closest("details").querySelector(".history-load-note").textContent = exerciseFor(target.value)?.body ? "Use added kg only; 0 means bodyweight. Check this session’s bodyweight below for estimates." : "Check the recorded load and reps when renaming. Renaming applies to every set in this group.";
+    target.closest("details").querySelector(".history-edit-labels").children[1].textContent = exerciseFor(target.value)?.body ? "Added kg" : "kg";
+  }
+  if (target.dataset.historySet) {
+    const row = target.closest("[data-edit-row-index]");
+    e.groups[+row.dataset.editGroupIndex].sets[+row.dataset.editRowIndex][target.dataset.historySet] = target.value;
+  }
+  $("#history-edit-error").textContent = "";
+  const dirty = historyEditDirty();
+  $("#history-edit-form button[type=submit]").disabled = !dirty;
+  $("#history-edit-status").textContent = dirty ? "Unsaved changes · a previous version is kept on save." : "No changes yet. Your saved session is untouched.";
+}
+function saveHistoryEdit(event) {
+  event.preventDefault();
+  const ctx = historyEditor;
+  if (!ctx) return;
+  try {
+    if (isCloud && !signedIn()) throw new Error("Sign in again before saving this edit. Your changes are still in this editor.");
+    if (profile().id !== ctx.profileId) throw new Error("The active account changed. Reopen this session before saving.");
+    const current = profile().history.find(h => h.id === ctx.original.id);
+    if (!equalData(current, ctx.original)) throw new Error("This session changed elsewhere while you were editing. Your edits are still here; cancel and reopen to review the latest version.");
+    if (!historyEditDirty()) { historyDetail(current.id); return; }
+    const edited = buildEditedSession(current, ctx.edit);
+    const next = clone(state), person = next.profiles.find(p => p.id === ctx.profileId);
+    person.history[person.history.findIndex(h => h.id === current.id)] = edited;
+    person.exerciseSchemaVersion = 1;
+    validateState(next);
+    try {
+      const archive = JSON.parse(localStorage.getItem(historyEditKey()) || "[]");
+      if (!Array.isArray(archive)) throw new Error();
+      localStorage.setItem(historyEditKey(), JSON.stringify([...archive.slice(-4), {at: edited.editedAt, before: clone(current)}]));
+    } catch { throw new Error("A recovery copy could not be saved. Your original session is unchanged. Export a backup and free device storage before trying again."); }
+    state = next;
+    const saved = persist();
+    if (isCloud) void store.flush();
+    historyEditor = null;
+    render(); historyDetail(edited.id);
+    toast(saved ? "Session updated. Your current workout is unchanged." : "Edit kept in this tab only. Export a backup before leaving.");
+  } catch (error) { $("#history-edit-error").textContent = error.message; }
 }
 function renderRest() {
   const d = profile().drafts[profile().current], dock = $("#rest-dock");
@@ -348,7 +467,41 @@ document.addEventListener("click", event => {
   if (!isCloud && action === "launch-cloud") { launchCloud(); return; }
   if (isCloud && !signedIn() && !["close-dialog", "confirm", "update"].includes(action)) return;
   const p = profile();
-  if (action === "close-dialog") { button.closest("dialog").close(); return; }
+  if (action === "close-dialog") {
+    if (button.closest("dialog")?.id === "detail-dialog" && historyEditor) { cancelHistoryEdit(); return; }
+    button.closest("dialog").close(); return;
+  }
+  if (action === "edit-history") { startHistoryEdit(button.dataset.id); return; }
+  if (action === "history-edit-cancel") { cancelHistoryEdit(); return; }
+  if (action === "previous-history-version") {
+    const old = previousSessionVersion(button.dataset.id);
+    if (!old) { toast("No earlier version is available on this device."); return; }
+    const previous = clone(state); previous.profiles = [clone(p)]; previous.activeProfileId = p.id;
+    const index = previous.profiles[0].history.findIndex(h => h.id === old.id);
+    if (index < 0) return;
+    previous.profiles[0].history[index] = old;
+    download(previous, filename("strength-tracker-before-session-edit")); return;
+  }
+  if (["history-add-set", "history-remove-set", "history-add-group", "history-remove-group"].includes(action)) {
+    if (!historyEditor || historyEditor.profileId !== profile().id) return;
+    const ctx = historyEditor, groupIndex = +button.dataset.group, group = ctx.edit.groups[groupIndex];
+    // Capture current disclosure state before rebuilding the editor, not just queued toggle events.
+    ctx.open = new Set($$("#history-edit-form [data-history-group]").filter(el => el.open).map(el => ctx.edit.groups[+el.dataset.historyGroup].key));
+    if (action === "history-add-group") {
+      if (ctx.edit.groups.length >= 50) { $("#history-edit-error").textContent = "Maximum 50 exercise groups."; return; }
+      const added = {key: uid(), name: "", originalName: "", sets: [newHistoryEditRow()]};
+      ctx.edit.groups.push(added); ctx.open.add(added.key);
+    } else if (!group) return;
+    else if (action === "history-add-set") {
+      if (ctx.edit.groups.reduce((sum, g) => sum + g.sets.length, 0) >= 1200) { $("#history-edit-error").textContent = "Maximum 1,200 sets."; return; }
+      group.sets.push(newHistoryEditRow()); ctx.open.add(group.key);
+    } else if (action === "history-remove-set") group.sets.splice(+button.dataset.row, 1);
+    else ctx.edit.groups.splice(groupIndex, 1);
+    renderHistoryEditor();
+    if (action === "history-add-group") $$("#history-edit-form [data-history-name]").at(-1)?.focus();
+    if (action === "history-add-set") $$(`[data-history-group="${groupIndex}"] [data-history-set="kg"]`).at(-1)?.focus();
+    return;
+  }
   if (action === "confirm") {
     const callback = confirmAction; confirmAction = null;
     $("#confirm-dialog").close(); callback?.(); return;
@@ -427,11 +580,13 @@ document.addEventListener("click", event => {
   if (action === "delete-profile" && state.profiles.length > 1) {
     confirmDialog(`Delete ${p.name}?`, "This removes all of this profile's history, drafts and preferences from the current app. Export a backup first. Other profiles and original legacy storage keys are kept.", "Delete profile", () => {
       if (state.profiles.length < 2) return;
+      try { localStorage.removeItem(`strengthTrackerSessionEditsV1:${p.id}`); } catch { /* Existing backups may remain when browser storage is unavailable. */ }
       state.profiles = state.profiles.filter(x => x.id !== p.id); state.activeProfileId = state.profiles[0].id;
       persist(); render(); toast("Profile deleted.");
     }, true); return;
   }
   if (action === "update" && waitingWorker) {
+    if (historyEditDirty()) { toast("Save or cancel your session edit before updating the app."); return; }
     if (isCloud ? !store.prepareUpdate() : !persist()) { toast("Export your work before updating; local saving is unavailable."); return; }
     updatePrepared = true;
     waitingWorker.postMessage({type: "ACTIVATE_UPDATE"}); return;
@@ -529,7 +684,10 @@ window.addEventListener("storage", e => {
   }
 });
 window.addEventListener("beforeunload", event => {
-  if (!updatePrepared && (store.failed || store.locked || (isCloud && store.dirty))) { event.preventDefault(); event.returnValue = ""; }
+  if (!updatePrepared && (historyEditDirty() || store.failed || store.locked || (isCloud && store.dirty))) { event.preventDefault(); event.returnValue = ""; }
+});
+$("#detail-dialog").addEventListener("cancel", event => {
+  if (historyEditor) { event.preventDefault(); cancelHistoryEdit(); }
 });
 document.addEventListener("visibilitychange", tickClocks);
 matchMedia("(prefers-color-scheme:dark)").addEventListener?.("change", theme);
@@ -540,6 +698,7 @@ if ("serviceWorker" in navigator) {
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
+    if (historyEditDirty()) { toast("An update is ready. Finish your session edit before reloading."); return; }
     // An update activated by another tab cannot discard this tab's pending work.
     // Journal immediately before reload as edits/acknowledgements may follow the click.
     if (isCloud ? !store.prepareUpdate() : (store.failed || store.locked)) {

@@ -1,6 +1,6 @@
 /* One coherent release. Bump VERSION whenever any app-shell asset changes. */
-const VERSION = "strength-training-tracker-v7-exercises-1";
-const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./icons.js", "./cloud.js", "./sync-merge.js", "./cloud-config.js", "./model.js", "./programme.js", "./manrope-latin.woff2", "./manifest.webmanifest", "./icon.svg", "./icon-maskable.svg"];
+const VERSION = "strength-training-tracker-v7-history-2";
+const FILES = ["./", "./index.html", "./styles.css", "./app.js", "./icons.js", "./cloud.js", "./sync-merge.js", "./history-edit.js", "./cloud-config.js", "./model.js", "./programme.js", "./manrope-latin.woff2", "./manifest.webmanifest", "./icon.svg", "./icon-maskable.svg"];
 const URLS = FILES.map(path => new URL(path, self.registration.scope).href);
 const KNOWN = new Set(URLS);
 self.addEventListener("install", event => {

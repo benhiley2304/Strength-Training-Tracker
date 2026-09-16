@@ -31,7 +31,7 @@ function fields(base, local, remote) {
   if (object(local) && object(remote)) {
     // An exercise switch changes what a set means. Never apply another device's
     // old-movement loads by position to the newly selected movement.
-    if (Array.isArray(local.sets) && Array.isArray(remote.sets) &&
+    if (Array.isArray(local.sets) && Array.isArray(remote.sets) && !Object.hasOwn(local, 'date') && !Object.hasOwn(remote, 'date') &&
         (local.name !== remote.name || (base && (local.name !== base.name || remote.name !== base.name)))) {
       unsafe('An exercise was changed while another device logged sets in that slot. Review both versions to preserve the correct exercise labels.');
     }

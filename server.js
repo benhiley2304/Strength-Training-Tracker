@@ -33,7 +33,7 @@ async function body(req, max) {
 }
 const assets = new Map([
   ['/', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']],
-  ...['app.js', 'cloud.js', 'sync-merge.js', 'cloud-config.js', 'model.js', 'programme.js', 'icons.js', 'sw.js'].map(x => [`/${x}`, [x, 'text/javascript']]),
+  ...['app.js', 'cloud.js', 'sync-merge.js', 'history-edit.js', 'cloud-config.js', 'model.js', 'programme.js', 'icons.js', 'sw.js'].map(x => [`/${x}`, [x, 'text/javascript']]),
   ['/styles.css', ['styles.css', 'text/css']], ['/manrope-latin.woff2', ['manrope-latin.woff2', 'font/woff2']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
   ...['icon.svg', 'icon-maskable.svg'].map(x => [`/${x}`, [x, 'image/svg+xml']])

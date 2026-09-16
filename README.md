@@ -2,7 +2,17 @@
 
 A twelve-session training log with two deliberately separate modes. The existing static URL remains a fully working **local-only tracker** and migration source. A separate Node service enables **private, invite-only cloud accounts**, with progress stored in a private GitHub data repository. No Supabase, third-party auth SDK, external scripts or runtime npm dependencies.
 
-## Upper A and temporary exercise changes
+## Editing workouts and the programme
+
+### Correct a saved session
+
+Open **Progress → Training history → a session → Edit session**. This opens a separate editor, not the live workout logger. Rename exercise groups (including past substitutions), correct kg/reps/RPE, add or remove sets/exercises, and edit the session name, local date/time, notes, duration, bodyweight, conditioning, readiness or partial/completed status. Renaming a group applies to all its saved sets; check added-load units for pull-ups.
+
+No changes reach the account until **Save changes**. Cancel/Escape asks before discarding edited fields. A save replaces the same workout ID and preserves the active workout, cycle position and other history records. Analytics use the corrected values. Legacy completion flags stay unverified rather than being invented.
+
+A rolling five-entry per-profile recovery archive is written before any edit is applied. The history detail offers **Download previous version** on the editing device, exporting a valid current-account backup with that prior session version. Browser storage failure blocks the edit before the original is changed. Signing out clears this account's local edit archive. If the same saved session changed while its editor was open, save stops with the buffer intact instead of overwriting it. App updates do not reload over an unsaved editor.
+
+### Programme and temporary swaps
 
 As of 16 September 2026, every Upper A intensity uses Bench Press / Barbell Row first, then Weighted Pull-up / Barbell Overhead Press. The second pairing keeps the old slot prescriptions (Heavy and Medium: 2 × 8 each; Light: pull-up 3 × 10, OHP 2 × 10). Pull-up kg means added load; use 0 for bodyweight only. The other programme entries and prescriptions are unchanged.
 

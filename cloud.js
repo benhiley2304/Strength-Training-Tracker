@@ -298,7 +298,7 @@ export class CloudStore {
     await this.request('/api/auth/logout', {method: 'POST', body: '{}'});
     this.pause(); this.generation++;
     let cleanupFailed = false;
-    try { for (const key of [cacheKey(this.account.id), `${cacheKey(this.account.id)}:rollback`, recoveryKey(this.account.id)]) this.storage.removeItem(key); } catch { cleanupFailed = true; }
+    try { for (const key of [cacheKey(this.account.id), `${cacheKey(this.account.id)}:rollback`, recoveryKey(this.account.id), `strengthTrackerSessionEditsV1:${this.account.id}`]) this.storage.removeItem(key); } catch { cleanupFailed = true; }
     this.account = null; this.state = null; this.baseState = null; this.raw = null; this.conflict = null; this.dirty = false; this.locked = false; this.failed = false; this.sessionExpired = false;
     this.status(cleanupFailed ? 'Signed out · browser cache cleanup failed; clear this site’s data on shared devices' : 'Signed out');
   }
