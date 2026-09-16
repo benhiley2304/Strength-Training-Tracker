@@ -14,12 +14,17 @@ function fakeStorage(initial = {}) {
   globalThis.localStorage = {getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v)};
   return data;
 }
-test("all 12 prescriptions exactly match the previous app.js", () => {
+test("all prescriptions are preserved apart from the deliberate Upper A second-pair correction", () => {
   const old = execFileSync("git", ["show", "4916e7d:app.js"], {encoding: "utf8"});
   const start = old.indexOf("const levels=");
   const end = old.indexOf("const fresh=");
   const original = vm.runInNewContext(`${old.slice(start, end)}; JSON.stringify(sessions);`);
-  assert.deepEqual(sessions, JSON.parse(original));
+  const expected = JSON.parse(original);
+  for (const s of expected.filter(s => s.key === "UA")) {
+    Object.assign(s.ex[2], {name: "Weighted Pull-up", compound: 1, body: 1});
+    Object.assign(s.ex[3], {name: "Barbell Overhead Press", compound: 1, body: false});
+  }
+  assert.deepEqual(sessions, expected);
 });
 test("navigation wraps correctly in both directions", () => {
   assert.equal(wrap(0), 12); assert.equal(wrap(13), 1); assert.equal(wrap(1), 1); assert.equal(wrap(12), 12);

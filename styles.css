@@ -144,6 +144,13 @@ h3, h4 { font-size: var(--text-base); }
 .set-more { display: grid; place-items: center; color: var(--muted); width: 44px; height: 44px; border-radius: 5px; }
 .set-more:hover { background: var(--surface-2); color: var(--text); }
 .set-error { grid-column: 1 / -1; color: var(--danger); font-size: var(--text-xs); text-align: left; padding: var(--s2); background: var(--surface-2); border-radius: 4px; }
+.retained-exercise { grid-column: 1 / -1; text-align: left; font-size: var(--text-xs); color: var(--muted); padding: 6px 0 0; }
+.substitution-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.substitution-tools .text-button { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: var(--text-xs); flex-shrink: 0; }
+.substitution-tools .icon { width: 16px; height: 16px; }
+.substitution-tools > span { min-width: 0; overflow-wrap: anywhere; }
+.retained-exercise, .exercise-title, .detail-exercise h4, .dialog-copy { overflow-wrap: anywhere; }
+#substitution-form .button { justify-self: stretch; text-align: left; white-space: normal; }
 .mobility-note { grid-column: 2 / 5; text-align: left; font-size: var(--text-xs); color: var(--muted); }
 .exercise-foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); margin-top: var(--s3); padding: var(--s1) 0; }
 .panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }

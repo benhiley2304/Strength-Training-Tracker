@@ -2,6 +2,18 @@
 
 A twelve-session training log with two deliberately separate modes. The existing static URL remains a fully working **local-only tracker** and migration source. A separate Node service enables **private, invite-only cloud accounts**, with progress stored in a private GitHub data repository. No Supabase, third-party auth SDK, external scripts or runtime npm dependencies.
 
+## Upper A and temporary exercise changes
+
+As of 16 September 2026, every Upper A intensity uses Bench Press / Barbell Row first, then Weighted Pull-up / Barbell Overhead Press. The second pairing keeps the old slot prescriptions (Heavy and Medium: 2 × 8 each; Light: pull-up 3 × 10, OHP 2 × 10). Pull-up kg means added load; use 0 for bodyweight only. The other programme entries and prescriptions are unchanged.
+
+Expand an exercise and choose **Change exercise**. Pick a catalogue movement or type a custom name, then choose **Use for this workout**. This affects only the active draft; the next workout still follows the programme. **Use programme exercise** restores the default. Custom movements use external kg/reps and do not invent a strength estimate.
+
+Entered rows are preserved with a per-row `exercise` identity. Completed original sets stay in history under the original movement; entered-but-unticked rows remain available and are saved only if completed. Blank rows are replaced, not populated with the previous movement's load. Remaining target sets start fresh. Preserved rows and replacement rows can coexist within one programme slot, and row IDs protect against positional reassignment.
+
+Old Upper A drafts remain valid. Untouched retired slots update when opened; entered Incline Dumbbell Press / Dumbbell Row data is never silently relabelled. All saved history remains as recorded, and the retired movements stay in the catalogue for history and backup compatibility.
+
+The optional `exerciseSchemaVersion: 1` profile marker and `X-Tracker-Features: exercise-substitutions-v1` request header stop obsolete clients from replacing substituted data. A simultaneous substitution and conflicting logging in the same slot requires review rather than relabelling another device's sets. Independent notes or other-slot changes still reconcile automatically. Current v3 backup envelopes remain supported.
+
 ## Cloud deployment — separate Render Node service
 
 Do **not** convert or remove the existing static Render service. Deploy this same source repository as a **new Web Service**, Node runtime, **Free** instance. Use Node **20 or 22**, build command `npm install --omit=dev`, start command `npm start` (equivalent to `node server.js`). Render supplies `PORT`; the server binds `0.0.0.0`. `render.yaml` intentionally continues to describe only the existing static service, so following it cannot replace that service with Node. Place only the new tracker service in the tracker project/environment; if the connector cannot specify project placement, do that manually in the Render dashboard. Do not change any unrelated project.

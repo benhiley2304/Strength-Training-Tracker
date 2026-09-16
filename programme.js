@@ -1,4 +1,4 @@
-/** The original twelve sessions, unchanged from app.js at 4916e7d. */
+/** Twelve-session programme. Upper A's second pair was corrected on 2026-09-16. */
 const levels = {heavy: 0, medium: 1, light: 2};
 const names = {heavy: "Heavy", medium: "Medium", light: "Light"};
 const E = (cat, name, h, m, l, compound = false, body = false) => ({cat, name, rx: [h, m, l], compound, body});
@@ -6,8 +6,8 @@ export const templates = {
   UA: {name: "Upper A", focus: "Bench press + barbell row", ex: [
     E("Primary","Bench Press",[3,"4"],[3,"6"],[3,"8"],1),
     E("Primary","Barbell Row",[3,"6"],[3,"6"],[3,"8"],1),
-    E("Secondary","Incline Dumbbell Press",[2,"8"],[2,"8"],[3,"10"]),
-    E("Secondary","Dumbbell Row",[2,"8"],[2,"8"],[2,"10"]),
+    E("Secondary","Weighted Pull-up",[2,"8"],[2,"8"],[3,"10"],1,1),
+    E("Secondary","Barbell Overhead Press",[2,"8"],[2,"8"],[2,"10"],1),
     E("Arms","Biceps Curl Variation",[3,"8"],[3,"10"],[3,"12"]),
     E("Arms","Triceps Extension Variation",[3,"8"],[3,"10"],[3,"12"]),
     E("Accessory","Rear Delt / Face Pull",[3,"8"],[3,"10"],[3,"12"]),
@@ -53,5 +53,38 @@ export const sessions = sequence.map(([key, intensity], i) => ({
   ex: templates[key].ex.map(e => ({...e, sets: e.rx[levels[intensity]][0], reps: e.rx[levels[intensity]][1]}))
 }));
 export const conditioning = ["None", "Assault bike · 3 × 1 min", "Rower · 3 × 1 min", "Zone 2 · 20–30 min"];
-export const exerciseFor = name => Object.values(templates).flatMap(t => t.ex).find(e => e.name === name);
+// Keep retired movements in the catalogue: old drafts/history must retain their identity.
+const additionalExercises = [
+  ["Incline Dumbbell Press", "Secondary"],
+  ["Dumbbell Shoulder Press", "Secondary"],
+  ["Dumbbell Bench Press", "Secondary"],
+  ["Machine Chest Press", "Secondary"],
+  ["Lat Pulldown", "Secondary"],
+  ["Seated Cable Row", "Secondary"],
+  ["Chest-supported Dumbbell Row", "Secondary"],
+  ["Cable Fly", "Accessory"],
+  ["Leg Press", "Secondary"],
+  ["Goblet Squat", "Secondary"],
+  ["Bulgarian Split Squat", "Secondary"],
+  ["Seated Leg Curl", "Accessory"],
+  ["Standing Calf Raise", "Lower leg"]
+].map(([name, cat]) => ({name, cat, compound: false, body: false}));
+export const exerciseCatalogue = [...new Map(
+  [...Object.values(templates).flatMap(t => t.ex), ...additionalExercises].map(e => [e.name, e])
+).values()];
+export const exerciseFor = name => exerciseCatalogue.find(e => e.name.toLowerCase() === String(name).trim().toLowerCase());
+export const legacySlotName = (sessionId, index) => {
+  if (sessions[sessionId - 1]?.key !== "UA") return sessions[sessionId - 1]?.ex[index]?.name;
+  return index === 2 ? "Incline Dumbbell Press" : index === 3 ? "Dumbbell Row" : sessions[sessionId - 1]?.ex[index]?.name;
+};
+export const validExerciseName = name => typeof name === "string" && name.trim() === name && name.length > 0 && name.length <= 80 && !/[\u0000-\u001f\u007f]/.test(name);
+/** Resolve actual identity, never just the programme slot, for validation and history. */
+export function workoutExercise(draft, index, row = null) {
+  const planned = sessions[draft.session - 1].ex[index];
+  const entry = draft.exercises[index];
+  const name = row?.exercise || entry.name;
+  const known = exerciseFor(name);
+  return {...planned, name, cat: name === planned.name ? planned.cat : known?.cat || "Substitution", compound: !!known?.compound,
+    body: !!known?.body, custom: !known, originalName: entry.originalName || planned.name};
+}
 export const targetReps = (exercise, index) => exercise.reps.includes(" / ") ? exercise.reps.split(" / ")[index % 3] : exercise.reps;

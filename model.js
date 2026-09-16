@@ -1,4 +1,4 @@
-import {sessions, exerciseFor} from "./programme.js";
+import {sessions, exerciseFor, legacySlotName, validExerciseName, workoutExercise} from "./programme.js";
 
 export const APP = "Strength Training Tracker";
 export const KEY = "strengthTrainingTrackerProfilesV3";
@@ -19,9 +19,43 @@ export function newDraft(profile, sessionId = profile.current) {
     readiness: readiness(), notes: "", conditioning: "None", restEndAt: null,
     exercises: sessions[sessionId - 1].ex.map(e => ({name: e.name, sets: Array.from({length: e.sets}, blankSet)}))};
 }
+const hasEnteredSet = s => s.done || ["kg", "reps", "rpe"].some(k => String(s[k] ?? "").trim() !== "");
+/** Only untouched retired slots follow the updated template. Entered data is never relabelled. */
+export function upgradeDraftProgramme(d) {
+  let changed = false;
+  sessions[d.session - 1].ex.forEach((planned, i) => {
+    const entry = d.exercises[i], oldName = legacySlotName(d.session, i);
+    if (entry && !entry.originalName && entry.name === oldName && oldName !== planned.name && !entry.sets.some(hasEnteredSet)) {
+      entry.name = planned.name; changed = true;
+    }
+  });
+  return changed;
+}
+/** A swap affects one draft only; every entered row keeps its actual exercise identity. */
+export function changeExercise(d, index, requestedName) {
+  const entry = d.exercises[index], planned = sessions[d.session - 1]?.ex[index];
+  const typed = String(requestedName ?? "").trim().replace(/\s+/g, " ");
+  if (!entry || !planned || !validExerciseName(typed)) throw new Error("Enter an exercise name of 1–80 characters.");
+  const name = exerciseFor(typed)?.name || typed;
+  if (name === entry.name) {
+    if (name === planned.name && entry.originalName) { delete entry.originalName; delete entry.custom; return true; }
+    return false;
+  }
+  const retained = entry.sets.filter(hasEnteredSet).map(row => ({
+    ...clone(row), id: row.id || uid(), exercise: row.exercise || entry.name
+  }));
+  const remaining = Math.max(1, planned.sets - retained.filter(s => s.done).length);
+  if (retained.length + remaining > 100) throw new Error("This slot already has too many sets. Finish this workout before adding more.");
+  entry.originalName = planned.name;
+  entry.name = name;
+  entry.custom = !exerciseFor(name);
+  entry.sets = [...retained, ...Array.from({length: remaining}, () => ({...blankSet(), id: uid()}))];
+  if (name === planned.name) { delete entry.originalName; delete entry.custom; }
+  return true;
+}
 export const wrap = n => ((n - 1) % 12 + 12) % 12 + 1;
 export function setError(set, exercise) {
-  if (exercise.name === "Spinal Decompression") return "";
+  if (exercise.cat === "Mobility") return "";
   if (set.kg === null || String(set.kg ?? "").trim() === "" || !Number.isFinite(Number(set.kg)) || +set.kg < 0 || +set.kg > 1500) return "Enter a load from 0 to 1,500 kg. Use 0 for no added load.";
   if (String(set.reps ?? "").trim() === "" || !Number.isInteger(+set.reps) || +set.reps < 1 || +set.reps > 200) return "Enter 1–200 whole reps.";
   if (set.rpe !== "" && (!Number.isFinite(+set.rpe) || +set.rpe < 1 || +set.rpe > 10 || (+set.rpe * 2) % 1)) return "RPE is optional; use 1–10 in half-point steps.";
@@ -55,9 +89,9 @@ export function workloadWeeks(history, now = Date.now()) {
 }
 export function completedSets(draft) {
   return draft.exercises.flatMap((ex, i) => ex.sets.flatMap((s, j) => {
-    const e = sessions[draft.session - 1].ex[i];
+    const e = workoutExercise(draft, i, s);
     if (!s.done || setError(s, e)) return [];
-    return [{exercise: ex.name, set: j + 1, kg: e.cat === "Mobility" ? 0 : +s.kg,
+    return [{exercise: e.name, set: j + 1, kg: e.cat === "Mobility" ? 0 : +s.kg,
       reps: e.cat === "Mobility" ? 0 : +s.reps, rpe: e.cat === "Mobility" || s.rpe === "" ? null : +s.rpe,
       done: true, compound: !!e.compound, body: !!e.body, mobility: e.cat === "Mobility"}];
   }));
@@ -94,6 +128,7 @@ export function validateState(data) {
   for (const p of data.profiles) {
     check(obj(p) && text(p.id, 100) && p.id.length && !ids.has(p.id) && text(p.name, 40) && p.name.trim(), "Profile names or IDs are invalid or duplicated.");
     ids.add(p.id);
+    check(p.exerciseSchemaVersion === undefined || p.exerciseSchemaVersion === 1, "Unsupported exercise data version.");
     check(bwValid(p.bw) && integer(p.current, 1, 12) && integer(p.cycle, 1, 100000) && integer(p.restSeconds, 0, 600), "Invalid profile settings.");
     check(Array.isArray(p.completed) && p.completed.length <= 12 && p.completed.every(n => integer(n, 1, 12)) && new Set(p.completed).size === p.completed.length, "Invalid cycle completion list.");
     check(obj(p.drafts) && Object.keys(p.drafts).length <= 12, "Invalid workout drafts.");
@@ -106,8 +141,19 @@ export function validateState(data) {
       const ex = sessions[d.session - 1].ex;
       check(Array.isArray(d.exercises) && d.exercises.length === ex.length, "The draft does not match the programme.");
       d.exercises.forEach((x, i) => {
-        check(obj(x) && x.name === ex[i].name && Array.isArray(x.sets) && x.sets.length >= ex[i].sets && x.sets.length <= 100, "Invalid exercise draft.");
-        x.sets.forEach(s => validateSet(s, true, ex[i]));
+        const expected = ex[i].name, retired = legacySlotName(d.session, i);
+        check(obj(x) && validExerciseName(x.name) && Array.isArray(x.sets) && x.sets.length >= ex[i].sets && x.sets.length <= 100, "Invalid exercise draft.");
+        check(x.originalName === undefined || x.originalName === expected || x.originalName === retired, "Invalid original exercise.");
+        check(x.name === expected || x.name === retired || (x.originalName !== undefined && (!!exerciseFor(x.name) || x.custom === true)), "Unknown exercise substitution.");
+        check(x.custom === undefined || typeof x.custom === "boolean", "Invalid custom exercise flag.");
+        const rowIds = new Set();
+        x.sets.forEach(s => {
+          check(obj(s), "Invalid set.");
+          check(s.exercise === undefined || validExerciseName(s.exercise), "Invalid retained exercise name.");
+          check(s.id === undefined || (text(s.id, 100) && s.id.length && !rowIds.has(s.id)), "Invalid or duplicate set identity.");
+          if (s.id) rowIds.add(s.id);
+          validateSet(s, true, workoutExercise(d, i, s));
+        });
       });
     }
     check(Array.isArray(p.history) && p.history.length <= 20000, "Invalid history.");
@@ -180,6 +226,8 @@ export function migrateLegacy(sources) {
       if (!hasDraft && !hasNotes && !(pro?.started && +pro.session === s.id)) continue;
       const d = newDraft(p, s.id);
       s.ex.forEach((e, i) => {
+        // V2 drafts used the retired Upper A pair. Never reinterpret those rows as pull-ups/OHP.
+        d.exercises[i].name = legacySlotName(s.id, i);
         const rows = base.drafts?.[`${s.id}-${i}`];
         if (!Array.isArray(rows)) return;
         d.exercises[i].sets = rows.slice(0, 100).map(x => {

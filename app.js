@@ -1,5 +1,5 @@
-import {sessions, conditioning, targetReps, exerciseFor} from "./programme.js";
-import {APP, KEY, Store, newProfile, newDraft, blankSet, clone, wrap, setError, completedSets, estimate, volume, workloadWeeks, parseImport, validateState} from "./model.js";
+import {sessions, conditioning, targetReps, exerciseFor, exerciseCatalogue, workoutExercise} from "./programme.js";
+import {APP, KEY, Store, newProfile, newDraft, blankSet, clone, wrap, setError, completedSets, estimate, volume, workloadWeeks, parseImport, validateState, upgradeDraftProgramme, changeExercise, uid} from "./model.js";
 import {icon, populateIcons, brandMark} from "./icons.js";
 import {CloudStore, api, detectCloud} from "./cloud.js";
 import {CLOUD_URL} from "./cloud-config.js";
@@ -53,6 +53,7 @@ const session = () => sessions[profile().current - 1];
 function draft() {
   const p = profile();
   if (!p.drafts[p.current]) p.drafts[p.current] = newDraft(p);
+  upgradeDraftProgramme(p.drafts[p.current]);
   return p.drafts[p.current];
 }
 function persist() {
@@ -127,8 +128,11 @@ function previousHTML(name) {
   return `<span class="previous">Previous · ${date(h.date)}${h.legacy ? " · legacy" : ""}<span>${sets.slice(0, 4).map(s => `${number(s.kg)} kg × ${s.reps}`).join(" / ")}${sets.length > 4 ? ` and ${sets.length - 4} more` : ""}</span></span>`;
 }
 function setHTML(s, i, j, e) {
+  const currentName = e.name;
+  e = workoutExercise(draft(), i, s);
   const mobility = e.cat === "Mobility";
   return `<div class="set-row ${s.done ? "is-done" : ""}" data-ex="${i}" data-set="${j}">
+    ${e.name !== currentName ? `<span class="retained-exercise">Kept as ${escape(e.name)}</span>` : ""}
     <span class="set-number">${j + 1}</span>
     ${mobility ? `<span class="mobility-note">Decompress · no load or reps prescribed</span>` : ["kg", "reps", "rpe"].map(key => {
       const title = key === "kg" ? (e.body ? "Added load kg" : "Load kg") : key === "reps" ? "Reps" : "RPE (optional)";
@@ -140,20 +144,55 @@ function setHTML(s, i, j, e) {
   </div>`;
 }
 function exerciseHTML(e, i) {
-  const d = draft().exercises[i], done = d.sets.filter(s => s.done && !setError(s, e)).length;
+  e = workoutExercise(draft(), i);
+  const d = draft().exercises[i], done = d.sets.filter(s => s.done && !setError(s, workoutExercise(draft(), i, s))).length;
+  const planned = session().ex[i];
   return `<article class="exercise ${done === d.sets.length ? "exercise-complete" : ""}" data-exercise="${i}">
     <h2><button class="exercise-toggle" data-action="accordion" data-index="${i}" aria-expanded="${openExercises.has(i)}" aria-controls="exercise-panel-${i}" id="exercise-heading-${i}">
       <span class="exercise-index">${String(i + 1).padStart(2, "0")}</span><span class="exercise-title"><span>${escape(e.name)}</span><small>${escape(e.cat)} <span aria-hidden="true">·</span> ${e.sets} × ${e.reps}</small></span>
       <span class="exercise-counter">${done}/${d.sets.length}</span><span class="chevron">${icon("chevron-down")}</span>
     </button></h2>
     <div class="exercise-panel" id="exercise-panel-${i}" role="region" aria-labelledby="exercise-heading-${i}" ${openExercises.has(i) ? "" : "hidden"}>
+      <div class="substitution-tools"><span class="small muted">${e.name !== planned.name ? `This workout: ${escape(e.name)}<br>Programme: ${escape(planned.name)}` : "Programme exercise"}</span><button class="text-button" data-action="change-exercise" data-index="${i}" aria-label="Change ${escape(e.name)}">${icon("sliders")} Change exercise</button></div>
       ${previousHTML(e.name)}
+      ${e.custom ? '<p class="load-hint">Custom exercise: log external load in kg (0 if none) and reps. No estimated max is calculated.</p>' : ""}
       ${e.body ? '<p class="load-hint">Log added weight only; 0 = bodyweight. Workout bodyweight is snapshotted for estimates.</p>' : e.name === "Weighted Dip / Flat DB Press" ? '<p class="load-hint">Dip: added load. DB press: combined dumbbell load. Note which you did; this mixed movement has no e1RM estimate.</p>' : ""}
       <div class="set-labels" aria-hidden="true"><span>Set</span>${e.cat === "Mobility" ? '<span class="mobility-note">Activity</span>' : `<span>${e.body ? "Added kg" : "kg"}</span><span>Reps</span><span>RPE <small>opt.</small></span>`}<span>Done</span><span></span></div>
       <div class="set-list">${d.sets.map((s, j) => setHTML(s, i, j, e)).join("")}</div>
       <div class="exercise-foot"><button class="text-button" data-action="add-set" data-index="${i}">${icon("plus")} Add set</button></div>
     </div>
   </article>`;
+}
+function openExerciseChange(index) {
+  const d = draft(), entry = d.exercises[index], planned = session().ex[index];
+  if (!entry || !planned) return;
+  const draftId = d.id;
+  const entered = entry.sets.filter(s => s.done || ["kg", "reps", "rpe"].some(k => s[k] !== "")).length;
+  showDialog("#detail-dialog", `<div class="dialog-heading"><div><h2 id="detail-title">Change exercise</h2><p class="small muted">This workout only. Your programme stays unchanged.</p></div>${closeButton}</div>
+    <p class="dialog-copy">Replacing <strong>${escape(entry.name)}</strong>. This slot keeps its ${planned.sets} × ${planned.reps} target; adjust the logged load and reps to suit.</p>
+    <form id="substitution-form" class="cloud-form">
+      <label class="form-label">Replacement exercise<input id="substitution-name" list="exercise-options" maxlength="80" required autocomplete="off" placeholder="Choose an exercise or type your own"></label>
+      <datalist id="exercise-options">${exerciseCatalogue.filter(e => e.name !== entry.name).sort((a, b) => a.name.localeCompare(b.name)).map(e => `<option value="${escape(e.name)}"></option>`).join("")}</datalist>
+      <p class="small muted">${entered ? `${entered} entered ${entered === 1 ? "set stays" : "sets stay"} labelled with the original exercise. Empty sets start fresh for your replacement.` : "No entered sets to move. Your replacement starts with blank load, reps and RPE."}</p>
+      <p class="small muted">Pull-ups: log added kg, including 0 for bodyweight. Custom exercise names are supported, without strength estimates.</p>
+      <p id="substitution-error" class="field-error" role="alert"></p>
+      <button type="submit" class="button primary">Use for this workout</button>
+      ${entry.name !== planned.name ? `<button type="button" id="restore-programme-exercise" class="button secondary">Use programme exercise: ${escape(planned.name)}</button>` : ""}
+    </form>`);
+  const apply = name => {
+    try {
+      if (draft().id !== draftId) throw new Error("The active workout changed. Close this window and choose the exercise again.");
+      if (!changeExercise(draft(), index, name)) { $("#detail-dialog").close(); return; }
+      profile().exerciseSchemaVersion = 1;
+      persist(); if (isCloud) void store.flush();
+      $("#detail-dialog").close(); openExercises.add(index); render();
+      toast("Exercise changed for this workout. Your entered sets are preserved.");
+      document.querySelector(`[data-action="change-exercise"][data-index="${index}"]`)?.focus({preventScroll: true});
+    } catch (error) { $("#substitution-error").textContent = error.message; }
+  };
+  $("#substitution-form").addEventListener("submit", event => { event.preventDefault(); apply($("#substitution-name").value); });
+  $("#restore-programme-exercise")?.addEventListener("click", () => apply(planned.name));
+  $("#substitution-name").focus();
 }
 function readinessHTML(d) {
   return `<details class="panel check-in"><summary><span>Session check-in</span><span class="muted"><span class="readiness-status">${Object.values(d.readiness).some(v => v !== null) ? "Added" : "Optional"}</span><span class="chevron">${icon("chevron-down")}</span></span></summary><div class="panel-body">
@@ -335,17 +374,18 @@ document.addEventListener("click", event => {
     session().ex.forEach((_, i) => updateExercise(i));
     button.textContent = openExercises.size ? "Collapse all" : "Expand all"; return;
   }
+  if (action === "change-exercise") { openExerciseChange(+button.dataset.index); return; }
   if (action === "add-set") {
     const i = +button.dataset.index, ex = draft().exercises[i];
     if (ex.sets.length >= 100) { toast("Maximum 100 sets per exercise."); return; }
-    ex.sets.push(blankSet()); persist(); updateExercise(i);
+    ex.sets.push({...blankSet(), id: uid()}); persist(); updateExercise(i);
     $(`[data-testid="set-${i}-${ex.sets.length - 1}-kg"]`)?.focus(); return;
   }
   if (action === "complete-set" || action === "clear-set") {
-    const row = button.closest(".set-row"), i = +row.dataset.ex, j = +row.dataset.set, d = draft(), s = d.exercises[i].sets[j], e = session().ex[i];
+    const row = button.closest(".set-row"), i = +row.dataset.ex, j = +row.dataset.set, d = draft(), s = d.exercises[i].sets[j], e = workoutExercise(d, i, s);
     if (action === "clear-set") {
       confirmDialog(j >= e.sets ? "Remove this added set?" : "Clear this set?", "This only changes the current draft. Saved workout history will not change.", "Clear set", () => {
-        if (j >= e.sets) d.exercises[i].sets.splice(j, 1); else d.exercises[i].sets[j] = blankSet();
+        if (j >= e.sets) d.exercises[i].sets.splice(j, 1); else d.exercises[i].sets[j] = {...blankSet(), ...(s.id ? {id: s.id} : {}), ...(s.exercise ? {exercise: s.exercise} : {})};
         persist(); updateExercise(i);
       }, true); return;
     }

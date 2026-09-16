@@ -8,7 +8,7 @@ const transient = e => e.status === 0 || e.status === 408 || e.status === 429 ||
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 export async function api(path, options = {}) {
   let response;
-  try { response = await fetch(path, {credentials: 'same-origin', cache: 'no-store', ...options, signal: options.signal || AbortSignal.timeout(90000), headers: {'Content-Type': 'application/json', ...options.headers}}); }
+  try { response = await fetch(path, {credentials: 'same-origin', cache: 'no-store', ...options, signal: options.signal || AbortSignal.timeout(90000), headers: {'Content-Type': 'application/json', 'X-Tracker-Features': 'exercise-substitutions-v1', ...options.headers}}); }
   catch { throw Object.assign(new Error(globalThis.navigator?.onLine === false ? 'Offline · changes are kept on this device. Reconnect to sync.' : 'Reconnecting… Your changes are kept on this device.'), {status: 0}); }
   if (!response.headers.get('content-type')?.includes('application/json')) throw Object.assign(new Error('Reconnecting… Waiting for the service to wake up.'), {status: response.status >= 500 ? response.status : 0});
   let data;

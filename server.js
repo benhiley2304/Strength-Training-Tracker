@@ -16,7 +16,7 @@ const isObject = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const only = (x, keys) => isObject(x) && Object.keys(x).every(k => keys.includes(k));
 const view = a => ({account: {id: a.id, username: a.username}, revision: a.revision, updatedAt: a.updatedAt, profile: a.profile, theme: a.theme});
 function validateProfile(profile, id, theme) {
-  if (!only(profile, ['id', 'name', 'bw', 'current', 'cycle', 'completed', 'drafts', 'history', 'restSeconds', 'legacy']) || profile.id !== id) fail(400, 'Invalid profile document.');
+  if (!only(profile, ['id', 'name', 'bw', 'current', 'cycle', 'completed', 'drafts', 'history', 'restSeconds', 'legacy', 'exerciseSchemaVersion']) || profile.id !== id) fail(400, 'Invalid profile document.');
   try { return validateState({app: APP, version: 3, revision: 0, activeProfileId: id, theme, profiles: [profile]}).profiles[0]; }
   catch { fail(400, 'Invalid profile document. Check field ranges and workout structure.'); }
 }
@@ -140,6 +140,11 @@ export function createApp({env = process.env, storage, authLimiter = new RateLim
         if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER || (match && data.revision !== undefined && data.revision !== revision)) fail(400, 'Invalid revision.');
         const profile = validateProfile(data.profile, session.id, data.theme);
         const result = await signedIn(a => {
+          const hasSubstitutions = p => p.exerciseSchemaVersion === 1 || Object.values(p.drafts).some(d => d.exercises.some(e => e.originalName || e.sets.some(s => s.exercise)));
+          if ((hasSubstitutions(a.profile) || hasSubstitutions(profile)) && req.headers['x-tracker-features'] !== 'exercise-substitutions-v1') {
+            fail(426, 'An exercise update is required. Close and reopen the tracker before editing. Your saved sets are safe.');
+          }
+          if (hasSubstitutions(a.profile) || hasSubstitutions(profile)) profile.exerciseSchemaVersion = 1;
           // Authenticated, validated and read from the refreshed Git remote. Recover a lost
           // acknowledgement even with stale If-Match, without a commit or revision bump.
           if (equalData(a.profile, profile) && a.theme === data.theme) return {result: view(a)};

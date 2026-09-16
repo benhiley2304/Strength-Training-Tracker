@@ -29,6 +29,16 @@ function fields(base, local, remote) {
   if (equalData(local, base)) return copy(remote);
   if (equalData(remote, base) || equalData(local, remote)) return copy(local);
   if (object(local) && object(remote)) {
+    // An exercise switch changes what a set means. Never apply another device's
+    // old-movement loads by position to the newly selected movement.
+    if (Array.isArray(local.sets) && Array.isArray(remote.sets) &&
+        (local.name !== remote.name || (base && (local.name !== base.name || remote.name !== base.name)))) {
+      unsafe('An exercise was changed while another device logged sets in that slot. Review both versions to preserve the correct exercise labels.');
+    }
+    if (Object.hasOwn(local, 'kg') && Object.hasOwn(remote, 'kg') &&
+        (local.exercise !== remote.exercise || ((local.id || remote.id) && local.id !== remote.id))) {
+      unsafe('A set was reassigned while another device edited it. Review both versions before replacing it.');
+    }
     const out = {};
     for (const k of new Set([...Object.keys(local), ...Object.keys(remote)])) {
       const value = fields(base?.[k], local[k], remote[k]);
@@ -45,7 +55,7 @@ function fields(base, local, remote) {
 export function hasEffort(d, baselineDraft) {
   // A profile-default change must not turn an inherited blank snapshot into effort.
   // New explicit workout BW edits carry a marker; old same-ID edits use their baseline.
-  return !!d && (d.bwSnapshotEdited === true || (baselineDraft?.id === d.id && baselineDraft.bwSnapshot !== d.bwSnapshot) || !!d.startedAt || !!d.restEndAt || !!d.notes || d.conditioning !== 'None' || Object.values(d.readiness).some(x => x !== null) || d.exercises.some((e, i) => e.sets.length !== sessions[d.session - 1].ex[i].sets || e.sets.some(s => s.done || s.kg !== '' || s.reps !== '' || s.rpe !== '')));
+  return !!d && (d.bwSnapshotEdited === true || (baselineDraft?.id === d.id && baselineDraft.bwSnapshot !== d.bwSnapshot) || !!d.startedAt || !!d.restEndAt || !!d.notes || d.conditioning !== 'None' || Object.values(d.readiness).some(x => x !== null) || d.exercises.some((e, i) => !!e.originalName || e.custom === true || e.sets.length !== sessions[d.session - 1].ex[i].sets || e.sets.some(s => !!s.exercise || s.done || s.kg !== '' || s.reps !== '' || s.rpe !== '')));
 }
 export function reconcile(base, local, remote, {replacement = false, sameRevision = false, legacyBaseUpdatedAt = null} = {}) {
   const id = remote.activeProfileId;
